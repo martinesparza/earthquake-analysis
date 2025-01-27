@@ -2,10 +2,7 @@ import numpy as np
 import pandas as pd
 import pyaldata as pyal
 
-from toolkit.logging import set_logging
 from toolkit.params import Params
-
-logger = set_logging(__name__)
 
 
 def preprocess(df: pd.DataFrame) -> pd.DataFrame:
@@ -37,7 +34,7 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
     # Combine time bins
     assert np.all(df.bin_size == 0.01), "bin size is not consistent!"
     df = pyal.combine_time_bins(df, int(Params.BIN_SIZE / 0.01))
-    logger.info(f"Combined every {int(Params.BIN_SIZE / 0.01)} bins")
+    print(f"Combined every {int(Params.BIN_SIZE / 0.01)} bins")
 
     # Sqrt transformation for homoscedasticity
     for signal in time_signals:
@@ -46,8 +43,6 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
     # Transformation into firing rates
     df = pyal.add_firing_rates(df, "smooth", std=0.05)
     for signal in time_signals:
-        logger.info(
-            f"Resulting {signal} ephys data shape is (NxT): {df[signal][0].T.shape}"
-        )
+        print(f"Resulting {signal} ephys data shape is (NxT): {df[signal][0].T.shape}")
 
     return df
