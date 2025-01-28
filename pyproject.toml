@@ -13,7 +13,6 @@ tqdm = "^4.67.1"
 matplotlib = "^3.10.0"
 seaborn = "^0.13.2"
 xarray = "^2024.11.0"
-pre-commit = "^4.0.1"
 
 
 [build-system]
