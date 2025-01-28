@@ -3,37 +3,6 @@ import numpy as np
 import seaborn as sns
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-# trial = 3
-# area = "all"
-
-
-# def plot_spiking_and_rates(df, trial, area, chan_limit=300):
-
-#     with plt.style.context("seaborn-v0_8-bright"):
-#         sns.set_theme(context="talk", style="ticks", font="Arial")
-#         fig, ax = plt.subplots(1, 2, sharex="all", figsize=(12, 10))
-#         im1 = ax[0].imshow(
-#             df[f"{area}_spikes"][trial][:, :chan_limit].T, cmap="viridis", origin="lower"
-#         )
-#         divider = make_axes_locatable(ax[0])
-#         cax = divider.append_axes("right", size="5%", pad=0.05)
-#         plt.colorbar(im1, cax=cax)
-
-#         im2 = ax[1].imshow(
-#             df[f"{area}_rates"][trial][:, :chan_limit].T, cmap="viridis", origin="lower"
-#         )
-#         divider = make_axes_locatable(ax[1])
-#         cax = divider.append_axes("right", size="5%", pad=0.05)
-#         plt.colorbar(im2, cax=cax)
-#         for ax_ in ax:
-#             plt.title(f"Sol Direction: {df.loc[trial].values_Sol_direction}")
-#             ax_.axvline(x=df.loc[trial].idx_sol_on, color="red", linewidth="1")
-#             ax_.set_ylabel("Striatal Neurons")
-#             ax_.set_xlabel("Time in sec. (30 ms bins)")
-#             ax_.set_xticks([0, 50, 100])
-#             ax_.set_xticklabels(["0", "1.6", "3.3"])
-#         plt.show()
-#         return df[f"{area}_rates"][trial][:, :chan_limit].T
 
 
 def plot_heatmap_raster(

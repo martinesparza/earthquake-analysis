@@ -1,30 +1,46 @@
 import matplotlib.pyplot as plt
+import spikeinterface as si
+import spikeinterface.extractors as se
 import numpy as np
 
+def plot_ap_and_lf_traces(spikeglx_recording, start_time, duration, channels=10, ap_label="AP Trace"):
+    """
+    Plots AP traces from a SpikeInterface SpikeGLX recording object.
+    Each channel is plotted in a separate subplot without axis box edges.
 
-# Plotting function
-def plot_npx_traces(
-    time, lf_data, ap_data, lf_label="LF Trace", ap_label="AP Trace", ax=None, show=True
-):
-    if ax is None:
-        fig, ax = plt.subplots(2, 1, figsize=(12, 6), sharex=True)
+    Parameters:
+    - spikeglx_recording: SpikeInterface recording object (e.g., SpikeGLXRecordingExtractor).
+    - start_time: Start time (in seconds) for the segment to plot.
+    - duration: Duration (in seconds) of the trace to plot.
+    - channels: Number of channels to plot.
+    - ap_label: Label for the plot (used as the figure title).
+    """
+    # Extract sampling rates
+    ap_sampling_rate = spikeglx_recording.get_sampling_frequency()
+    
+    # Convert time to sample indices
+    start_sample_ap = int(start_time * ap_sampling_rate)
+    end_sample_ap = int((start_time + duration) * ap_sampling_rate)
 
-    # Plot LF trace
-    ax[0].plot(time, lf_data, color="blue", lw=0.8)
-    ax[0].set_ylabel("Amplitude (LF)", fontsize=12)
-    ax[0].set_title(lf_label, fontsize=14)
-    ax[0].grid(True, linestyle="--", alpha=0.5)
-
-    # Plot AP trace
-    ax[1].plot(time, ap_data, color="red", lw=0.8)
-    ax[1].set_ylabel("Amplitude (AP)", fontsize=12)
-    ax[1].set_xlabel("Time (s)", fontsize=12)
-    ax[1].set_title(ap_label, fontsize=14)
-    ax[1].grid(True, linestyle="--", alpha=0.5)
-
-    # Adjust layout
+    # Get AP traces
+    ap_trace = spikeglx_recording.get_traces(segment_index=0, start_frame=start_sample_ap, end_frame=end_sample_ap)
+    
+    # Time vector for plotting
+    ap_time = start_time + (1 / ap_sampling_rate) * np.arange(ap_trace.shape[0])
+    
+    # Plot each channel in a separate subplot
+    fig, axes = plt.subplots(channels, 1, figsize=(12, channels * 2), sharex=True)
+    
+    for i, ax in enumerate(axes):
+        ax.plot(ap_time, ap_trace[:, 250 + i], lw=0.8, color="black")  # Plot channel i
+        ax.axis("off")  # Remove axis edges and ticks
+    
+    # Add a title to the figure
+    fig.suptitle(ap_label, fontsize=16, y=0.92)
+    
     plt.tight_layout()
-    if show:
-        plt.show()
+    plt.show()
 
-    return ax
+# Usage example
+# spikeglx_recording = se.read_spikeglx("path_to_spikeglx_folder")
+# plot_ap_and_lf_traces(spikeglx_recording, start_time=0, duration=1, channels=10, ap_label="AP Trace")
