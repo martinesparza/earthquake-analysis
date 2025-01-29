@@ -6,8 +6,8 @@ import pyaldata as pyal
 from sklearn.decomposition import PCA
 from sklearn.manifold import Isomap
 from typing import Callable
-from toolkit import utilityTools as utility
-from toolkit import params
+from tools.viz import utilityTools as utility
+from tools import params
 
 
 def plot_VAF(ax, data_list: list[pd.DataFrame], epoch: Callable=None, areas=["all"], model: Callable=None, n_components=10, n_neighbors=10) -> np.ndarray:
