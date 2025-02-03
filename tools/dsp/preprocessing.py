@@ -45,4 +45,8 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
     for signal in time_signals:
         print(f"Resulting {signal} ephys data shape is (NxT): {df[signal][0].T.shape}")
 
+
+    # Add solenoid level
+    df["sol_level_id"]  = [Params.sol_dir_to_level[dir] for dir in df['values_Sol_direction']]
+
     return df
