@@ -1,8 +1,42 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import pyaldata as pyal
 import seaborn as sns
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+
+def plot_fr_raster(df, axes: list, sol_directions: list, trial=15, area="Dls"):
+    data = []
+
+    # example trial data for each target
+    for sol in sol_directions:
+        df_ = pyal.select_trials(df, df.values_Sol_direction == sol)
+        fr = df_[f"{area}_rates"][trial]
+        data.append(fr)
+
+    data = np.array(data)  # 3d array of sol directions, time, neurons
+    vmin = np.amin(data, axis=(0, 1))  # Minimum for each neuron across sols and time
+    vmax = np.amax(data, axis=(0, 1))  # Maximum for each neuron across sols and time
+
+    for solData, ax, sol_direction in zip(data, axes, sol_directions):
+        solData -= vmin
+        solData /= vmax - vmin
+        im = ax.imshow(solData.T, aspect="auto")
+        ax.axvline(x=df_.idx_sol_on[0], color="red", linestyle="--", linewidth=1)
+        ax.tick_params("both", bottom=False, left=False, labelbottom=False, labelleft=False)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["bottom"].set_visible(False)
+        ax.spines["left"].set_visible(False)
+        ax.set_title(f"Sol: {sol_direction}")
+
+    axes[0].set_ylabel(f"{area} units ($n={solData.shape[1]}$)")
+
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    plt.colorbar(im, cax=cax)
+    plt.show()
+    return axes
 
 
 def plot_heatmap_raster(
