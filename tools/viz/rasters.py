@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import pyaldata as pyal
 import seaborn as sns
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -21,8 +22,8 @@ def plot_fr_raster(df, axes: list, sol_directions: list, trial=15, area="Dls"):
     for solData, ax, sol_direction in zip(data, axes, sol_directions):
         solData -= vmin
         solData /= vmax - vmin
-        im = ax.imshow(solData.T, aspect="auto")
-        ax.axvline(x=df_.idx_sol_on[0], color="red", linestyle="--", linewidth=1)
+        im = ax.imshow(solData.T, aspect="auto", cmap="viridis")
+        ax.axvline(x=df_.idx_sol_on[0], color="red", linestyle="--", linewidth=2)
         ax.tick_params("both", bottom=False, left=False, labelbottom=False, labelleft=False)
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
@@ -40,7 +41,13 @@ def plot_fr_raster(df, axes: list, sol_directions: list, trial=15, area="Dls"):
 
 
 def plot_heatmap_raster(
-    arr: np.array, ax=None, show=True, num_ticks=10, show_colorbar=False
+    df: pd.DataFrame,
+    area: str,
+    ax=None,
+    show=True,
+    num_ticks=10,
+    show_colorbar=False,
+    add_sol_onset=False,
 ):
     """Generate heatmap raster with a given array
 
@@ -54,14 +61,26 @@ def plot_heatmap_raster(
     Returns:
         ax: Axes object
     """
+    rates = np.concatenate(df[f"{area}_rates"].values, axis=0).T
+
     if ax is None:
         fig, ax = plt.subplots(sharex="all", figsize=(12, 10))
 
-    im = ax.imshow(arr, cmap="viridis", origin="lower", aspect="auto")
+    im = ax.imshow(rates, cmap="viridis", origin="lower", aspect="auto")
 
-    time_bins = np.linspace(0, arr.shape[1] * 0.03, arr.shape[1])
+    if add_sol_onset:
+        for time_bin in range(len(df)):
+            ax.axvline(
+                x=time_bin * ((df.trial_length.values[0] - 1) / 3)
+                + df.idx_sol_on.values[0],
+                color="red",
+                linestyle="--",
+                linewidth=1,
+            )
 
-    tick_positions = np.linspace(0, arr.shape[1] - 1, num_ticks)
+    time_bins = np.linspace(0, rates.shape[1] * 0.03, rates.shape[1])
+
+    tick_positions = np.linspace(0, rates.shape[1] - 1, num_ticks)
     tick_labels = np.round(np.linspace(time_bins[0], time_bins[-1], num_ticks), 2)
 
     ax.set_xticks(tick_positions)

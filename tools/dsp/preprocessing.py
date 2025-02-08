@@ -5,7 +5,7 @@ import pyaldata as pyal
 from tools.params import Params
 
 
-def preprocess(df: pd.DataFrame) -> pd.DataFrame:
+def preprocess(df: pd.DataFrame, only_trials: bool = True) -> pd.DataFrame:
     """
     Preprocessing steps to manipulate trial data structure
 
@@ -29,7 +29,8 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
         df = pyal.remove_low_firing_neurons(df, signal, 1)
 
     # Select trials
-    df = pyal.select_trials(df, "trial_name == 'trial'")  # Remove baseline
+    if only_trials:
+        df = pyal.select_trials(df, "trial_name == 'trial'")
 
     # Combine time bins
     assert np.all(df.bin_size == 0.01), "bin size is not consistent!"
@@ -45,8 +46,9 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
     for signal in time_signals:
         print(f"Resulting {signal} ephys data shape is (NxT): {df[signal][0].T.shape}")
 
-
-    # Add solenoid level
-    df["sol_level_id"]  = [Params.sol_dir_to_level[dir] for dir in df['values_Sol_direction']]
+    df["sol_level_id"] = [
+        Params.sol_dir_to_level[dir_] if trial_name == "trial" else None
+        for dir_, trial_name in zip(df["values_Sol_direction"], df["trial_name"])
+    ]
 
     return df
