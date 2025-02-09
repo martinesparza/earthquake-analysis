@@ -8,8 +8,11 @@ from sklearn.decomposition import PCA
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
 from tools.params import Params
+from tools import params 
+import pyaldata as pyal
+from tools.viz import utilityTools as utility
 
-def within_decoding(cat, allDFs, epoch, area = "M1", model = 10,n_components=10,from_bhv = False, bhv_fields = ["all"], reduce_dim = False, control = False, transformation = None, metric = None, classifier_model =GaussianNB, ax = None):
+def within_decoding(cat, allDFs, epoch, area = "M1", units = None, model = 10,n_components=10,from_bhv = False, bhv_fields = ["all"], reduce_dim = False, control = False, transformation = None, metric = None, classifier_model =GaussianNB, ax = None, trial_conditions = []):
     '''
     '''
    
@@ -17,12 +20,14 @@ def within_decoding(cat, allDFs, epoch, area = "M1", model = 10,n_components=10,
     target_ids = np.unique(allDFs[0][cat])
     conf_matrices = []
     for i, df in enumerate(allDFs):
+        for condition in trial_conditions:
+            df = pyal.select_trials(df, condition)
         if from_bhv:
             #  for predicting from behavioural data
             AllData = dt.get_data_array_bhv([df], cat, epoch = epoch, bhv_fields=bhv_fields, model = model, n_components=n_components, reduce_dim = reduce_dim, transformation = transformation, metric = metric)
                 # _, n_trial, n_comp = AllData1.shape
         else:
-            AllData = dt.get_data_array([df], cat, epoch = epoch, area=area,model = model, n_components=n_components)
+            AllData = dt.get_data_array([df], cat, epoch = epoch, area=area, units = units, model = model, n_components=n_components)
             AllData = AllData[0,...]
             n_targets,n_trial,n_time,n_comp = AllData.shape
             # print(AllData.shape)
@@ -38,7 +43,7 @@ def within_decoding(cat, allDFs, epoch, area = "M1", model = 10,n_components=10,
                 # print(X.shape)
                 # print(AllTar.shape)
 
-                y_pred = cross_val_predict(classifier_model(), X, AllTar, cv=10)
+                y_pred = cross_val_predict(classifier_model(), X, AllTar, cv=5)
                 
                 # Compute confusion matrix for session
                 conf_mat = confusion_matrix(AllTar, y_pred, labels=target_ids)
@@ -47,7 +52,7 @@ def within_decoding(cat, allDFs, epoch, area = "M1", model = 10,n_components=10,
                 # Compute accuracy
                 within_score[df.session[0]] = np.mean(y_pred == AllTar)
             else:
-                _score = cross_val_score(classifier_model(),X,AllTar,scoring='accuracy', cv=10).mean()
+                _score = cross_val_score(classifier_model(),X,AllTar,scoring='accuracy', cv=5).mean()
                 within_score[df.session[0]] = np.mean(_score)
 
     if ax is not None:            
@@ -61,4 +66,55 @@ def within_decoding(cat, allDFs, epoch, area = "M1", model = 10,n_components=10,
     
     return within_score
 
+def plot_decoding_over_time(ax, category, df_list, areas, n_components, model, idx_event = 'idx_sol_on', min_time = 0, max_time = 2, trial_conditions = []) :
+    '''
+    
+    '''
+    if isinstance(areas, str):
+        areas = [areas]
+    if isinstance(areas, dict):
+        units_per_area = list(areas.values())
+        areas = list(areas.keys())
+    else:
+        units_per_area = None
+    
+    within_results_per_area = []
+    min_timebin =int(min_time/Params.BIN_SIZE)
+    max_timebin = int(max_time/Params.BIN_SIZE)
+    for i,area in enumerate(areas):
+        within_results_over_time = []
+        for timebin in range(min_timebin,max_timebin):
+            perturb_epoch = pyal.generate_epoch_fun(start_point_name=idx_event,
+                                                rel_start=int(min_timebin),
+                                                rel_end=int(timebin)
+                                                )
+            if units_per_area is not None:
+                area = "all"
+                units = units_per_area[i]
+            else:
+                units = None
+            within_results = within_decoding(cat = category,  allDFs = df_list, area = area, units= units, n_components = n_components, epoch = perturb_epoch, model = model, trial_conditions=trial_conditions)
+            within_results_over_time.append([result for result in within_results.values()])
 
+        within_results_per_area.append(np.array(within_results_over_time))
+
+    
+    time_axis = np.arange(min_time,max_time,Params.BIN_SIZE)*1000
+    time_axis = time_axis[1:]
+    for i, area in enumerate(areas):
+        utility.shaded_errorbar(
+                ax,
+                time_axis,
+                within_results_per_area[i],
+                label=area,
+                color=getattr(params.colors, area, "k"),
+            )
+
+
+    chance_level = 1/len(np.unique(df_list[0][category]))
+    ax.set_xlabel("Window length (ms)")
+    ax.set_ylabel("Decoding accuracy (%)")
+    ax.set_title(f"Decoding accuracy using increasing time intervals")
+    ax.axvline(x=0, color="k", linestyle="--", label = idx_event)
+    ax.axhline(y=chance_level, color="red", linestyle="--", label = "Chance level")
+    ax.legend()
