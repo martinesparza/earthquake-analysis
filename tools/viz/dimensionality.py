@@ -15,7 +15,7 @@ def plot_VAF(
     epoch=None,
     areas=["all"],
     model=None,
-    n_components=10,
+    n_components=None,
     n_neighbors=10,
     linestyle="-",
     show=True,
@@ -43,7 +43,9 @@ def plot_VAF(
             rates = np.concatenate(df_[field].values, axis=0)
             if units_per_area is not None:
                 rates = rates[:, units_per_area[i][0] : units_per_area[i][1]]
-                n_components = rates.shape[-1]
+
+            n_components = rates.shape[-1]
+
             model = PCA(n_components=n_components, svd_solver="full")
             rates_model = model.fit(rates)
             if isinstance(model, PCA):

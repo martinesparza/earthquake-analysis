@@ -56,4 +56,9 @@ def preprocess(df: pd.DataFrame, only_trials: bool = True, trial_selection_crite
         for dir_, trial_name in zip(df["values_Sol_direction"], df["trial_name"])
     ]
 
+    df["sol_contra_ipsi"] = [
+        Params.sol_dir_to_contra_ipse[dir_] if trial_name == "trial" else None
+        for dir_, trial_name in zip(df["values_Sol_direction"], df["trial_name"])
+    ]
+
     return df
