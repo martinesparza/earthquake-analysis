@@ -45,7 +45,6 @@ def plot_VAF(
                 rates = rates[:, units_per_area[i][0] : units_per_area[i][1]]
 
             n_components = rates.shape[-1]
-
             model = PCA(n_components=n_components, svd_solver="full")
             rates_model = model.fit(rates)
             if isinstance(model, PCA):

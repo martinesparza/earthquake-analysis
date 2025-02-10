@@ -31,5 +31,7 @@ def pca_pr(arr):
     -------
     estimated dimensionality
     """
-    pca = PCA().fit(arr)
+
+    model = PCA(n_components=arr.shape[-1], svd_solver="full")
+    pca = model.fit(arr)
     return participation_ratio(pca.explained_variance_)
