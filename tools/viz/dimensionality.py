@@ -100,3 +100,56 @@ def plot_pairwise_corr(ax, df, areas, epoch):
         ax[i].set_xlabel("Neuron #")
         ax[i].set_ylabel("Neuron #")
         plt.show()
+
+
+def plot_participation_ratio_per_session(
+    df, areas, epoch=None, trial_query=None, title=None
+):
+    results = {area: {"free": [], "inter": [], "trial": []} for area in areas}
+
+    df_trials = pyal.select_trials(df, df.trial_name == "trial")
+    df_trials_motion = df_trials[
+        df_trials["idx_motion"].apply(lambda x: np.any(x < df_trials.idx_sol_on[0]))
+    ]
+
+    df_intertrials = pyal.select_trials(df, df.trial_name == "intertrial")
+    df_free = pyal.select_trials(df, df.trial_name == "free")
+
+    if epoch is not None:
+        df_trials = pyal.restrict_to_interval(df_trials, epoch_fun=epoch)
+
+    if trial_query is not None:
+        print("Applying query")
+        print(len(df_trials))
+        df_trials = pyal.select_trials(df_trials, trial_query)
+        print(len(df_trials))
+
+    for area in areas:
+        free_data = pyal.concat_trials(df_free, f"{area}_rates")
+        results[area]["free"].append(pca_pr(free_data))
+
+        trial_data = pyal.concat_trials(df_trials, f"{area}_rates")
+        results[area]["trial"].append(pca_pr(trial_data))
+
+        intertrial_data = pyal.concat_trials(df_intertrials, f"{area}_rates")
+        results[area]["inter"].append(pca_pr(intertrial_data))
+
+    fig, axes = plt.subplots(1, len(areas), sharey=True)
+
+    for i, area in enumerate(areas):
+        data = pd.DataFrame(
+            {
+                "PR": results[area]["free"]
+                + results[area]["inter"]
+                + results[area]["trial"],
+                "Condition": ["free"] * len(results[area]["free"])
+                + ["inter"] * len(results[area]["inter"])
+                + ["trial"] * len(results[area]["trial"]),
+            }
+        )
+        sns.stripplot(data=data, x="Condition", y="PR", s=8, color="blue", ax=axes[i])
+        axes[i].set_title(area)
+
+    plt.suptitle(title)
+    plt.tight_layout()
+    plt.show()
