@@ -79,7 +79,7 @@ def get_data_array(
         df_ = pyal.restrict_to_interval(df, epoch_fun=epoch) if epoch is not None else df
         rates = np.concatenate(df_[field].values, axis=0)
         if units is not None:
-            rates = rates[:,units[0]:units[1]]
+            rates = rates[:, units[0] : units[1]]
         rates_model = model.fit(rates)
         df_ = pyal.apply_dim_reduce_model(df_, rates_model, field, field_name)
         for targetIdx, target in enumerate(target_ids):
