@@ -12,6 +12,13 @@ class Params:
         rel_start=int(WINDOW_perturb[0] / BIN_SIZE),
         rel_end=int(WINDOW_perturb[1] / BIN_SIZE),
     )
+
+    WINDOW_before_perturb = (-0.6, -0.1)
+    before_perturb_epoch = pyal.generate_epoch_fun(
+        start_point_name="idx_sol_on",
+        rel_start=int(WINDOW_perturb[0] / BIN_SIZE),
+        rel_end=int(WINDOW_perturb[1] / BIN_SIZE),
+    )
     # 0 = ipsi, 1 = contra
     sol_dir_to_contra_ipse = {
         0: 0,
