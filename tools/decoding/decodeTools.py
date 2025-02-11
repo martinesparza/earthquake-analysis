@@ -183,3 +183,70 @@ def plot_decoding_over_time(
     ax.axvline(x=0, color="k", linestyle="--", label=idx_event)
     ax.axhline(y=chance_level, color="red", linestyle="--", label="Chance level")
     ax.legend()
+
+def plot_decoding_moving_window(ax, category, df_list, areas, n_components, model, idx_event="idx_sol_on", min_time=-0.5, max_time=1.5, window_length=0.1, step=0.03, trial_conditions=[]):
+
+
+    if isinstance(areas, str):
+        areas = [areas]
+    if isinstance(areas, dict):
+        units_per_area = list(areas.values())
+        areas = list(areas.keys())
+    else:
+        units_per_area = None
+
+    within_results_per_area = []
+    
+  
+    bin_size = Params.BIN_SIZE  
+    min_timebin = int(min_time / bin_size)
+    max_timebin = int(max_time / bin_size)
+    window_size_bins = int(window_length / bin_size)
+    step_size_bins = int(step / bin_size)
+
+    time_points = np.arange(min_timebin, max_timebin - window_size_bins, step_size_bins)
+
+    for i, area in enumerate(areas):
+        within_results_over_time = []
+
+        for start_bin in time_points:
+            perturb_epoch = pyal.generate_epoch_fun(
+                start_point_name=idx_event,
+                rel_start=start_bin,
+                rel_end=start_bin + window_size_bins
+            )
+
+            if units_per_area is not None:
+                area = "all"
+                units = units_per_area[i]
+            else:
+                units = None
+
+            within_results = within_decoding(
+                cat=category, allDFs=df_list, area=area, units=units,
+                n_components=n_components, epoch=perturb_epoch,
+                model=model, trial_conditions=trial_conditions
+            )
+            within_results_over_time.append([result for result in within_results.values()])
+
+        within_results_per_area.append(np.array(within_results_over_time))
+
+    time_axis = ((time_points + window_size_bins) * bin_size) * 1000  #  
+
+    for i, area in enumerate(areas):
+        utility.shaded_errorbar(
+            ax,
+            time_axis,
+            within_results_per_area[i],
+            label=area,
+            color=getattr(params.colors, area, "k"),
+        )
+
+    chance_level = 1 / len(np.unique(df_list[0][category]))
+
+    ax.set_xlabel("Time relative to event (ms)")
+    ax.set_ylabel("Decoding Accuracy (%)")
+    ax.set_title(f"Decoding Accuracy using Moving Window ({window_length*1000} ms)")
+    ax.axvline(x=0, color="k", linestyle="--", label=f"Event: {idx_event}")  # Mark event 
+    ax.axhline(y=chance_level, color="red", linestyle="--", label="Chance level")
+    ax.legend()
