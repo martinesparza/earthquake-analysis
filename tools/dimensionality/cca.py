@@ -1,7 +1,12 @@
 import warnings
 
 import numpy as np
+import pandas as pd
+import pyaldata as pyal
 from scipy.linalg import inv, qr, svd
+
+from tools.dataTools import get_data_array
+from tools.params import Params
 
 
 def canoncorr(X: np.array, Y: np.array, fullReturn: bool = False) -> np.array:
@@ -81,3 +86,86 @@ def canoncorr(X: np.array, Y: np.array, fullReturn: bool = False) -> np.array:
     V = Y @ B
 
     return A, B, r, U, V
+
+
+def get_ccs_between_two_areas(df, area1, area2, n_components=10):
+
+    AllData_area1 = get_data_array(df, area=area1, model="pca")
+    AllData_area2 = get_data_array(df, area=area2, model="pca")
+
+    _, _, min_trials, min_time, _ = np.min(
+        (AllData_area1.shape, AllData_area2.shape), axis=0
+    )
+    data1 = np.reshape(AllData_area1[:, :min_trials, :min_time, :], (-1, n_components))
+    data2 = np.reshape(AllData_area2[:, :min_trials, :min_time, :], (-1, n_components))
+
+    ccs = canoncorr(data1, data2)
+
+    return ccs
+
+
+# Function to roll the arrays
+def _roll_array(arr, shift):
+    return np.roll(arr, shift=shift, axis=0)  # Rolling along the time axis
+
+
+def compute_shifted_cca_between_areas(
+    df: pd.DataFrame,
+    area_to_shift: str,
+    area_to_compare: str,
+    shift_start=-0.5,
+    shift_end=0.5,
+    shift_step=0.05,
+    n_components=10,
+):
+    """Computes CCAs between areas by applying time shifts.
+
+    Assumes you are providing a dataframe with trials only
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        trialdata with trials only
+    area_to_shift : str
+        area to shift
+    area_to_compare : _type_
+        area to compare
+    shift_start : float, optional
+        values from which to start in seconds, by default 0.5
+    shift_end : float, optional
+        values from which to end in seconds, by default 0.5
+    shift_step : float, optional
+        values for stepping t in seconds, by default 0.1
+    n_components : int, optional
+        components used for CCA, by default 10
+    """
+
+    if shift_step / Params.BIN_SIZE < 1:
+        raise ValueError(f"Stepping time is lower than bin size")
+
+    shifts = np.arange(
+        start=int(shift_start / Params.BIN_SIZE),
+        stop=int(shift_end / Params.BIN_SIZE),
+        step=int(shift_step / Params.BIN_SIZE),
+    )  # Example shift value
+
+    df_tmp = df.copy()
+    ccs_time_shifted = []
+
+    for shift in shifts:
+        df_tmp = df.copy()
+        df_tmp[f"{area_to_shift}_rates"] = df_tmp[f"{area_to_shift}_rates"].apply(
+            lambda arr: _roll_array(arr, shift)
+        )
+        df_tmp = pyal.restrict_to_interval(df_tmp, epoch_fun=Params.perturb_epoch)
+        ccs_time_shifted.append(
+            np.mean(
+                get_ccs_between_two_areas(
+                    df_tmp,
+                    area1=area_to_shift,
+                    area2=area_to_compare,
+                    n_components=n_components,
+                )[1:4]
+            )
+        )
+    return ccs_time_shifted, shifts * Params.BIN_SIZE
