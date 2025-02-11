@@ -5,6 +5,8 @@ import pyaldata as pyal
 import seaborn as sns
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+from tools.params import Params
+
 
 def plot_fr_raster(df, axes: list, sol_directions: list, trial=15, area="Dls"):
     data = []
@@ -67,12 +69,11 @@ def plot_heatmap_raster(
         fig, ax = plt.subplots(sharex="all", figsize=(12, 10))
 
     im = ax.imshow(rates, cmap="viridis", origin="lower", aspect="auto")
-
+    print(df.trial_length.values[0])
     if add_sol_onset:
         for time_bin in range(len(df)):
             ax.axvline(
-                x=time_bin * ((df.trial_length.values[0] - 1) / 3)
-                + df.idx_sol_on.values[0],
+                x=time_bin * (df.trial_length.values[0] - 1) + df.idx_sol_on.values[0],
                 color="red",
                 linestyle="--",
                 linewidth=1,
