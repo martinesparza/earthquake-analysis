@@ -5,7 +5,7 @@ import pyaldata as pyal
 
 @dataclass
 class Params:
-    BIN_SIZE = 0.01  # Desired bin size for analysis.
+    BIN_SIZE = 0.03  # Desired bin size for analysis.
     WINDOW_perturb = (-0.1, 1.5)
     perturb_epoch = pyal.generate_epoch_fun(
         start_point_name="idx_sol_on",
