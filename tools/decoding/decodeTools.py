@@ -205,8 +205,15 @@ def plot_decoding_moving_window(ax, category, df_list, areas, n_components, mode
     step_size_bins = int(step / bin_size)
 
     time_points = np.arange(min_timebin, max_timebin - window_size_bins, step_size_bins)
-
+    
+    model_full = PCA(n_components=n_components, svd_solver="full")
+    
     for i, area in enumerate(areas):
+        for j,df in enumerate(df_list):
+            rates = np.concatenate(df[f"{area}_rates"].values, axis=0)
+            rates_model = model_full.fit(rates)
+            df_list[j] = pyal.apply_dim_reduce_model(df, rates_model, f"{area}_rates", f"{area}_pca")
+        
         within_results_over_time = []
 
         for start_bin in time_points:

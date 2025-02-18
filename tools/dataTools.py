@@ -37,17 +37,18 @@ def get_data_array(
     AllData = get_data_array(data_list, delay_epoch, area='PFC', model=10)
     all_data = np.reshape(AllData, (-1,10))
     """
+
     if isinstance(data_list, pd.DataFrame):
         data_list = [data_list]
     if model is None:
         model = PCA(n_components=n_components, svd_solver="full")
-        field_name = "_pca"
+        pca_field = "_pca"
     elif isinstance(model, int):
         model = PCA(n_components=model, svd_solver="full")
-        field_name = "_pca"
+        pca_field = "_pca"
     elif model == "pca":
         model = PCA(n_components=n_components, svd_solver="full")
-        field_name = "_pca"
+        pca_field = "_pca"
     else:
         raise ValueError(
             "Invalid model specified. Choose 'isomap', 'pca', or specify number of components for PCA."
@@ -77,11 +78,14 @@ def get_data_array(
     rng = np.random.default_rng(12345)
     for session, df in enumerate(data_list):
         df_ = pyal.restrict_to_interval(df, epoch_fun=epoch) if epoch is not None else df
-        rates = np.concatenate(df_[field].values, axis=0)
-        if units is not None:
-            rates = rates[:, units[0] : units[1]]
-        rates_model = model.fit(rates)
-        df_ = pyal.apply_dim_reduce_model(df_, rates_model, field, field_name)
+        if f"{area}_pca" not in df_.columns:
+            rates = np.concatenate(df_[field].values, axis=0)
+            if units is not None:
+                rates = rates[:, units[0] : units[1]]
+            rates_model = model.fit(rates)
+            df_ = pyal.apply_dim_reduce_model(df_, rates_model, field, pca_field)
+        else:
+            pca_field = f"{area}_pca"
         for targetIdx, target in enumerate(target_ids):
             df__ = pyal.select_trials(df_, df_[trial_cat] == target)
             all_id = df__.trial_id.to_numpy()
@@ -92,7 +96,7 @@ def get_data_array(
             df__ = pyal.select_trials(
                 df__, lambda trial: trial.trial_id in all_id[:n_shared_trial]
             )
-            for trial, trial_rates in enumerate(df__._pca):
+            for trial, trial_rates in enumerate(df__[pca_field]):
                 AllData[session, targetIdx, trial, :, :] = trial_rates
 
     return AllData
