@@ -45,16 +45,11 @@ def pca_pr(arr, n_components=None):
 
 
 def plot_participation_ratio_per_session(
-    df, areas, ax, epoch=None, n_components=None, num_iterations=15
+    df, areas, ax, epoch=None, n_components=None, num_iterations=100
 ):
     results = {area: {"free": [], "inter": [], "trial": []} for area in areas}
 
     df_trials = pyal.select_trials(df, df.trial_name == "trial")
-    # df_trials = pyal.select_trials(df_trials, "idx_trial_end > 30365")
-    # df_trials = df_trials[
-    #     df_trials["idx_motion"].apply(lambda x: np.any(x < df_trials.idx_sol_on[0]))
-    # ]
-
     df_intertrials = pyal.select_trials(df, df.trial_name == "intertrial")
     df_free = pyal.select_trials(df, df.trial_name == "free")
 
