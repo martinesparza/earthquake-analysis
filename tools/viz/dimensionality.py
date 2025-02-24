@@ -211,3 +211,204 @@ def plot_latents(df, areas, trial_type="trial", n_components=10, motion_only=Tru
         ax.set_xlabel("Timebins (30ms)")
     plt.show()
     return
+
+def get_VAF(df_list, area, epoch_manifold, trial_query_manifold = [], epoch_to_explain = None, trial_query_data_to_explain = [], n_components = 1):
+    for session, df in enumerate(df_list):
+        df_manifold = df.copy()
+        df_data = df.copy()
+        for query in trial_query_manifold:
+            df_manifold = pyal.select_trials(df_manifold, query)
+
+
+        df_manifold = pyal.restrict_to_interval(df_manifold, epoch_fun=epoch_manifold) if epoch_manifold is not None else df_manifold
+
+        for query in trial_query_data_to_explain:
+            df_data = pyal.select_trials(df_data, query)
+        
+        df_data = pyal.restrict_to_interval(df_data, epoch_fun=epoch_to_explain) if epoch_to_explain is not None else df_data
+
+
+        rates_manifold = np.concatenate(df_manifold[area+"_rates"].values, axis=0)
+        rates_data = np.concatenate(df_data[area+"_rates"].values, axis=0)
+        pca_manifold = PCA(n_components=n_components, svd_solver="full")
+        pca_manifold.fit(rates_manifold)
+        data_projected_on_manifold = pca_manifold.transform(rates_data)
+        # print(data_projected_on_manifold.shape)
+        explained_variance_ratio = np.var(data_projected_on_manifold, axis=0) / np.sum(np.var(rates_data, axis=0))
+        VAF = np.sum(explained_variance_ratio)
+        # print(VAF)
+
+    return VAF
+
+def plot_VAF_by_moving_window(ax,df_list, areas,n_components,model, epoch_to_explain,idx_event="idx_sol_on", min_time=-0.5, max_time=1.5, window_length=0.1, step=0.03, trial_query_data_to_explain=None,trial_query_manifold = None):
+    '''
+    VAF explained by the 1st PC 
+    -> from a moving window of length window_length, from min_time to max_time relative to idx_event (e.g. moving window in the end free period); ; can specify trial_query_manifold
+    -> in the epoch_to_explain (e.g. post perturbation period); can specify trial_query_data_to_explain 
+    '''
+    if isinstance(areas, str):
+        areas = [areas]
+    
+  
+    bin_size = params.Params.BIN_SIZE  
+    min_timebin = int(min_time / bin_size)
+    max_timebin = int(max_time / bin_size)
+    window_size_bins = int(window_length / bin_size)
+    step_size_bins = int(step / bin_size)
+
+    time_points = np.arange(min_timebin, max_timebin - window_size_bins, step_size_bins)
+    VAF_per_area= []
+    for i, area in enumerate(areas):
+        VAF_over_time = []
+        for start_bin in time_points:
+            running_epoch = pyal.generate_epoch_fun(
+                start_point_name=idx_event,
+                rel_start=start_bin,
+                rel_end=start_bin + window_size_bins
+            )
+            VAF_over_time.append([get_VAF(df_list = df_list, area = area,epoch_manifold = running_epoch, trial_query_manifold = trial_query_manifold, epoch_to_explain = epoch_to_explain, trial_query_data_to_explain = trial_query_data_to_explain, n_components=n_components)])
+        VAF_per_area.append(np.array(VAF_over_time))
+
+    time_axis = ((time_points + window_size_bins) * bin_size) * 1000  #  
+    for i, area in enumerate(areas):
+        utility.shaded_errorbar(
+            ax,
+            time_axis,
+            VAF_per_area[i],
+            label=area,
+            color=getattr(params.colors, area, "k"),
+        )
+
+
+    ax.set_xlabel("Time relative to event (ms)")
+    ax.set_ylabel(f"VAF")
+    ax.set_title(f"Variance accounted for by {n_components} PCs")
+    ax.axvline(x=0, color="k", linestyle="--", label=f"Event: {idx_event}")  # Mark event 
+    # ax.axhline(y=upper_bound, color="red", linestyle="--", label="Upper bound")
+    ax.legend()
+
+def plot_VAF_in_moving_window(ax,df_list, areas,n_components,model, epoch_manifold,epoch_to_explain,idx_event="idx_sol_on", min_time=-0.5, max_time=1.5, window_length=0.1, step=0.03, trial_query_data_to_explain=None,trial_query_manifold = None):
+    
+    '''
+    VAF explained by the 1st PC 
+    -> from epoch_manifold (e.g. initial free period); can specify trial_query_manifold
+    -> in a moving window of length window_length, from min_time to max_time relative to idx_event (e.g. moving window in the end free period); trial_query_data_to_explain
+    '''
+    if isinstance(areas, str):
+        areas = [areas]
+   
+    
+  
+    bin_size = params.Params.BIN_SIZE  
+    min_timebin = int(min_time / bin_size)
+    max_timebin = int(max_time / bin_size)
+    window_size_bins = int(window_length / bin_size)
+    step_size_bins = int(step / bin_size)
+
+    time_points = np.arange(min_timebin, max_timebin - window_size_bins, step_size_bins)
+    VAF_per_area= []
+    for i, area in enumerate(areas):
+        VAF_over_time = []
+        for start_bin in time_points:
+            running_epoch = pyal.generate_epoch_fun(
+                start_point_name=idx_event,
+                rel_start=start_bin,
+                rel_end=start_bin + window_size_bins
+            )
+            VAF_over_time.append([get_VAF(df_list = df_list, area = area,epoch_manifold = epoch_manifold, trial_query_manifold = trial_query_manifold, epoch_to_explain = running_epoch, trial_query_data_to_explain = trial_query_data_to_explain, n_components=n_components)])
+        VAF_per_area.append(np.array(VAF_over_time))
+
+    time_axis = ((time_points + window_size_bins) * bin_size) * 1000  #  
+    for i, area in enumerate(areas):
+        utility.shaded_errorbar(
+            ax,
+            time_axis,
+            VAF_per_area[i],
+            label=area,
+            color=getattr(params.colors, area, "k"),
+        )
+
+    # df_data = pyal.select_trials(df_list[0], trial_query_data_to_explain)
+    # df_data = pyal.restrict_to_interval(df_data, epoch_fun=epoch_to_explain)
+
+    # rates_data = np.concatenate(df_data[area+"_rates"].values, axis=0)
+    # pca_data = PCA(n_components=n_components, svd_solver="full")
+    # pca_data.fit(rates_data)
+    
+    # upper_bound= np.sum(pca_data.explained_variance_ratio_)
+   
+
+    ax.set_xlabel("Time relative to event (ms)")
+    ax.set_ylabel(f"VAF")
+    ax.set_title(f"Variance accounted for by {n_components} PCs")
+    ax.axvline(x=0, color="k", linestyle="--", label=f"Event: {idx_event}")  # Mark event 
+    # ax.axhline(y=upper_bound, color="red", linestyle="--", label="Upper bound")
+    ax.legend()
+
+
+
+
+
+def plot_VAF_increasing_window(ax,df_list, areas,n_components,model,epoch_manifold, epoch_to_explain,idx_event="idx_sol_on", min_time=-0.5, max_time=1.5, window_length=0.1, step=0.03, trial_query_data_to_explain=None,trial_query_manifold = None):
+    '''
+    VAF explained by the 1st PC 
+    -> from epoch_manifold (e.g. initial free period); can specify trial_query_manifold
+    -> in an increasing window from min_time to max_time relative to idx_event (e.g. increasing window in the initial free period); ; can specify trial_query_data_to_explain
+    '''
+
+    if isinstance(areas, str):
+        areas = [areas]
+
+  
+    bin_size = params.Params.BIN_SIZE  
+    min_timebin = int(min_time / bin_size)
+    max_timebin = int(max_time / bin_size)
+    window_size_bins = int(window_length / bin_size)
+    step_size_bins = int(step / bin_size)
+
+    time_points = np.arange(min_timebin, max_timebin - window_size_bins, step_size_bins)
+    VAF_per_area= []
+    for i, area in enumerate(areas):
+        VAF_over_time = []
+        for time_bin in range(min_timebin, max_timebin):
+            running_epoch = pyal.generate_epoch_fun(
+                start_point_name=idx_event,
+                rel_start=min_timebin,
+                rel_end=time_bin
+            )
+            VAF_over_time.append([get_VAF(df_list = df_list, area = area,epoch_manifold = running_epoch, trial_query_manifold = trial_query_manifold, epoch_to_explain = epoch_to_explain, trial_query_data_to_explain = trial_query_data_to_explain, n_components=n_components)])
+        VAF_per_area.append(np.array(VAF_over_time))
+
+    # time_axis = ((time_points + window_size_bins) * bin_size) * 1000  #  
+    time_axis = np.arange(min_time, max_time, bin_size) * 1000
+    time_axis = time_axis[1:]
+    for i, area in enumerate(areas):
+        utility.shaded_errorbar(
+            ax,
+            time_axis,
+            VAF_per_area[i],
+            label=area,
+            color=getattr(params.colors, area, "k"),
+        )
+
+    # df_data = pyal.select_trials(df_list[0], trial_query_data_to_explain)
+    # df_data = pyal.restrict_to_interval(df_data, epoch_fun=epoch_to_explain)
+
+    # rates_data = np.concatenate(df_data[area+"_rates"].values, axis=0)
+    # pca_data = PCA(n_components=n_components, svd_solver="full")
+    # pca_data.fit(rates_data)
+    
+    # upper_bound= np.sum(pca_data.explained_variance_ratio_)
+   
+
+    ax.set_xlabel("Time relative to event (ms)")
+    ax.set_ylabel(f"VAF")
+    ax.set_title(f"Variance accounted for by {n_components} PCs")
+    ax.axvline(x=0, color="k", linestyle="--", label=f"Event: {idx_event}")  # Mark event 
+    # ax.axhline(y=upper_bound, color="red", linestyle="--", label="Upper bound")
+    ax.legend()
+
+
+
+  
+    

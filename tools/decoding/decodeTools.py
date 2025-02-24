@@ -128,7 +128,9 @@ def plot_decoding_over_time(
     max_time=2,
     trial_conditions=[],
 ):
-    """ """
+    """ 
+    Increasing window not moving window!
+    """
     if isinstance(areas, str):
         areas = [areas]
     if isinstance(areas, dict):
@@ -184,8 +186,12 @@ def plot_decoding_over_time(
     ax.axhline(y=chance_level, color="red", linestyle="--", label="Chance level")
     ax.legend()
 
-def plot_decoding_moving_window(ax, category, df_list, areas, n_components, model, idx_event="idx_sol_on", min_time=-0.5, max_time=1.5, window_length=0.1, step=0.03, trial_conditions=[]):
 
+
+def plot_decoding_moving_window(ax, category, df_list, areas, n_components, model, idx_event="idx_sol_on", min_time=-0.5, max_time=1.5, window_length=0.1, step=0.03, trial_conditions=[]):
+    '''
+    PCA model obtained on all the trials concatenated, not restricted to the moving window.
+    '''
 
     if isinstance(areas, str):
         areas = [areas]
@@ -253,10 +259,11 @@ def plot_decoding_moving_window(ax, category, df_list, areas, n_components, mode
 
     ax.set_xlabel("Time relative to event (ms)")
     ax.set_ylabel("Decoding Accuracy (%)")
-    ax.set_title(f"Decoding Accuracy using Moving Window ({window_length*1000} ms)")
+    ax.set_title(f"Decoding Accuracy of {category} ({window_length*1000} ms)")
     ax.axvline(x=0, color="k", linestyle="--", label=f"Event: {idx_event}")  # Mark event 
     ax.axhline(y=chance_level, color="red", linestyle="--", label="Chance level")
     ax.legend()
+    
 
 def plot_decoding_moving_window_per_component(ax, category, df_list, area = "M1", max_components = 20, model = "pca", 
                                               idx_event="idx_sol_on", min_time=-0.5, max_time=1.5, 
