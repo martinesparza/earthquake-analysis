@@ -64,16 +64,17 @@ def plot_heatmap_raster(
         ax: Axes object
     """
     rates = np.concatenate(df[f"{area}_rates"].values, axis=0).T
+    trial_length = df[f"{area}_rates"].values[0].shape[0]
+    print(trial_length)
 
     if ax is None:
         fig, ax = plt.subplots(sharex="all", figsize=(12, 10))
-
     im = ax.imshow(rates, cmap="viridis", origin="lower", aspect="auto")
-    print(df.trial_length.values[0])
     if add_sol_onset:
         for time_bin in range(len(df)):
+            sol_on = time_bin * (trial_length) + df.idx_sol_on.values[0]
             ax.axvline(
-                x=time_bin * (df.trial_length.values[0] - 1) + df.idx_sol_on.values[0],
+                x=sol_on,
                 color="red",
                 linestyle="--",
                 linewidth=1,
