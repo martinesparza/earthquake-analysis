@@ -68,7 +68,7 @@ def plot_heatmap_raster(
     print(trial_length)
 
     if ax is None:
-        fig, ax = plt.subplots(sharex="all", figsize=(12, 10))
+        fig, ax = plt.subplots(sharex="all", figsize=(15, 5))
     im = ax.imshow(rates, cmap="viridis", origin="lower", aspect="auto")
     if add_sol_onset:
         for time_bin in range(len(df)):
@@ -87,6 +87,9 @@ def plot_heatmap_raster(
 
     ax.set_xticks(tick_positions)
     ax.set_xticklabels(tick_labels)
+    ax.set_title(f"{area}")
+    ax.set_ylabel("Neurons")
+    ax.set_xlabel("Time (s)")
 
     if show_colorbar:
         divider = make_axes_locatable(ax)

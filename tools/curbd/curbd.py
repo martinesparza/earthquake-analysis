@@ -168,11 +168,20 @@ def trainMultiRegionRNN(
             if tt in resetPoints:
                 timepoint = math.floor(tt / dtFactor)
                 H = Adata[:, timepoint]
-            # compute next RNN step
+
+            ################################# Update RNN #########################################
             RNN[:, tt, np.newaxis] = nonLinearity(H)
+
+            ############################ Compute new hidden state #################################
+            #  Compute dot product of connectivity and model activity and add noise
             JR = J.dot(RNN[:, tt]).reshape((number_units, 1)) + inputWN[:, tt, np.newaxis]
+            # Update hiddent state (pre non linear activation) using Euler
             H = H + dtRNN * (-H + JR) / tauRNN
-            # check if the RNN time coincides with a data point to update J
+
+            ############################ Update J connectivity matrix #############################
+
+            # Let the model run for a series of time values before updating!! 5 time points is the default.
+            # If the RNN time coincides with a data point to update J
             if tLearn >= dtData:
                 tLearn = 0
                 err = RNN[:, tt, np.newaxis] - Adata[:, iLearn, np.newaxis]
@@ -189,6 +198,8 @@ def trainMultiRegionRNN(
                     J[:, iTarget.flatten()] = J[
                         :, iTarget.reshape((number_units))
                     ] - c * np.outer(err.flatten(), k.flatten())
+
+        ################################### Compute metrics #########################################
 
         rModelSample = RNN[iTarget, :][:, iModelSample]
         distance = np.linalg.norm(Adata[iTarget, :] - rModelSample)

@@ -153,3 +153,61 @@ def plot_participation_ratio_per_session(
     plt.suptitle(title)
     plt.tight_layout()
     plt.show()
+
+
+def plot_latents(df, areas, trial_type="trial", n_components=10, motion_only=True):
+
+    axes = []
+    category = "values_Sol_direction"
+
+    df = pyal.select_trials(df, df.trial_name == trial_type)
+    sol_on_idx = df["idx_sol_on"][0]
+
+    # Always remove last trial
+    df = df[:-1]
+
+    if motion_only:
+        df = df[df["idx_motion"].apply(lambda x: np.any(x < df.idx_sol_on[0]))]
+
+    # Define subplot grid dimensions
+    n_rows = n_components  # Rows: trial types
+    n_cols = len(areas)  # Columns: areas
+    targets = np.unique(df[category])
+
+    fig, axes = plt.subplots(n_components, n_cols, figsize=(20, 9), sharex="all")
+    axes = np.array(axes).reshape(n_rows, n_cols)
+
+    # Loop through areas (columns) and trial types (rows)
+    for col, area in enumerate(areas):
+        for row in range(n_components):
+            rates = np.concatenate(
+                df[area + "_rates"].values, axis=0
+            )  # Shape: (239 trials, 15 timepoints, 87 units)
+
+            # Fit PCA model
+            rates_model = PCA(n_components=n_components, svd_solver="full").fit(rates)
+
+            # Apply PCA to the dataframe
+            df_ = pyal.apply_dim_reduce_model(df, rates_model, area + "_rates", "_pca")
+
+            # Select the correct subplot
+            ax = axes[row, col]
+
+            # Loop through targets and plot averaged trials
+            for tar in targets:
+                df__ = pyal.select_trials(df_, df_[category] == tar)
+                ex = pyal.get_sig_by_trial(df__, "_pca")
+                ex = np.mean(ex, axis=2)[
+                    :, :n_components
+                ]  # Reduce to first 3 PCA components
+                ax.plot(ex[:, row])
+
+            # Titles and labels
+            ax.axvline(x=sol_on_idx, color="r", linestyle="--")
+            if row == 0:
+                ax.set_title(f"{area}")
+            if col == 0:
+                ax.set_ylabel(f"PC {row}")
+        ax.set_xlabel("Timebins (30ms)")
+    plt.show()
+    return

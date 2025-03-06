@@ -3,7 +3,7 @@ import pyaldata as pyal
 from matplotlib import pyplot as plt
 
 from tools.dsp.preprocessing import preprocess
-from tools.viz.dimensionality import plot_VAF
+from tools.viz.dimensionality import plot_latents, plot_VAF
 from tools.viz.rasters import plot_heatmap_raster
 
 
@@ -22,7 +22,7 @@ def run_initial_report(df: pd.DataFrame, areas: list, trial_selection_criteria=N
     # Initial raster per region
     for area in areas:
         plot_heatmap_raster(
-            df_trials[:50],
+            df_trials[50:60],
             area=area,
             add_sol_onset=True,
         )
@@ -34,3 +34,6 @@ def run_initial_report(df: pd.DataFrame, areas: list, trial_selection_criteria=N
         data_list=df_trials,
         areas=areas,
     )
+
+    # Latents
+    plot_latents(df, areas=areas)

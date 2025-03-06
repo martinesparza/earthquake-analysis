@@ -6,7 +6,7 @@ from tools.params import Params
 
 
 def preprocess(
-    df: pd.DataFrame, only_trials: bool = True, trial_selection_criteria=[]
+    df: pd.DataFrame, only_trials: bool = True, trial_selection_criteria: None | list = None
 ) -> pd.DataFrame:
     """
     Preprocessing steps to manipulate trial data structure
@@ -34,8 +34,9 @@ def preprocess(
     if only_trials:
         df = pyal.select_trials(df, "trial_name == 'trial'")
 
-    for condition in trial_selection_criteria:
-        df = pyal.select_trials(df, condition)
+    if trial_selection_criteria is not None:
+        for condition in trial_selection_criteria:
+            df = pyal.select_trials(df, condition)
 
     # Combine time bins
     assert np.all(df.bin_size == 0.01), "bin size is not consistent!"
