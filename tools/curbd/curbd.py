@@ -167,7 +167,7 @@ def trainMultiRegionRNN(
             # be used, but it's an option for concatenating multi-trial data
             if tt in resetPoints:
                 timepoint = math.floor(tt / dtFactor)
-                H = Adata[:, timepoint]
+                H = Adata[:, timepoint, np.newaxis]  # MODIFIED: added np.newaxis here because i got error of array broadcasting cannot broadcast from (82,) to (82,1)
 
             ################################# Update RNN #########################################
             RNN[:, tt, np.newaxis] = nonLinearity(H)
