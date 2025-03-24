@@ -15,7 +15,7 @@ seaborn = "^0.13.2"
 xarray = "^2024.11.0"
 spikeinterface = "^0.101.2"
 scikit-learn = "^1.6.1"
-pyaldata = {git = "git@github.com:NeuralAnalysis/PyalData.git", develop = true}
+pyaldata = { git = "git@github.com:BeNeuroLab/PyalData.git", develop = true }
 
 
 [build-system]

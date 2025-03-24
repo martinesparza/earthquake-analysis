@@ -2299,7 +2299,7 @@ scipy = "^1.13.0"
 
 [package.source]
 type = "git"
-url = "ssh://git@github.com/NeuralAnalysis/PyalData.git"
+url = "ssh://git@github.com/BeNeuroLab/PyalData.git"
 reference = "HEAD"
 resolved_reference = "3c0458c6d4b3ee688d64f9e594327afde17f00a6"
 
@@ -3441,4 +3441,4 @@ jupyter = ["ipytree (>=0.2.2)", "ipywidgets (>=8.0.0)", "notebook"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "c16740f9857a453c785715eb2ae8bd354f02632676fcbe77d48afe4de9ee2882"
+content-hash = "9eeda4781f146f390227bfa669ea9283905746a87ee18283340b18919c193905"
