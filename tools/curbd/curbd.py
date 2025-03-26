@@ -175,8 +175,9 @@ def trainMultiRegionRNN(
             ############################ Compute new hidden state #################################
             #  Compute dot product of connectivity and model activity and add noise
             JR = J.dot(RNN[:, tt]).reshape((number_units, 1)) + inputWN[:, tt, np.newaxis]
+
             # Update hiddent state (pre non linear activation) using Euler
-            H = H + dtRNN * (-H + JR) / tauRNN
+            H = H + dtRNN * (-H + JR) / tauRNN  # This is equation (4) in the paper.
 
             ############################ Update J connectivity matrix #############################
 
