@@ -4,9 +4,9 @@ import pyaldata
 import pylab
 import os
 import csv
-from tools.curbd import curbd
 from sklearn.decomposition import PCA
 from sklearn.cross_decomposition import CCA
+from tools.curbd import curbd
 
 ### core RNN and CURBD functions ###
 def RNN(formated_rates, resets, regions_arr, data, mouse_num, **kwargs):
@@ -16,7 +16,7 @@ def RNN(formated_rates, resets, regions_arr, data, mouse_num, **kwargs):
 
     return rnn_model, figure
 
-def PCA_and_CCA(concat_rates, rnn_model, num_components, arr_shapes, mouse_num, printing=True):
+def PCA_and_CCA(concat_rates, rnn_model, num_components, trial_num, mouse_num, printing=True):
     data_rnn = rnn_model['Adata'].T
     data_real = rescale_array(concat_rates)
 
@@ -25,7 +25,7 @@ def PCA_and_CCA(concat_rates, rnn_model, num_components, arr_shapes, mouse_num, 
     pca_rnn, pca_data_rnn = PCA_fit_transform(data_rnn, num_components)
 
     variance_figure = plot_PCA_cum_var(pca_real, pca_rnn, mouse_num)
-    PCA_figure = plot_PCA(pca_data_real, pca_data_rnn, arr_shapes, mouse_num)
+    PCA_figure = plot_PCA(pca_data_real, pca_data_rnn, trial_num, mouse_num)
 
     # CCA
     canonical_values, scores = CCA_compare(pca_data_real, pca_data_rnn, num_components)
@@ -41,53 +41,7 @@ def PCA_and_CCA(concat_rates, rnn_model, num_components, arr_shapes, mouse_num, 
 
     return scores, variance_figure, PCA_figure, CCA_figure
 
-def CURBD(rnn_model, categories, event_time, mouse_num, normalization_method):
-    curbd_arr, curbd_labels = curbd.computeCURBD(rnn_model)
-    n_regions = curbd_arr.shape[0]
-
-    trial_figure = plot_trial_currents(rnn_model, curbd_arr, curbd_labels, n_regions, categories, event_time, mouse_num,
-                                       normalize=normalization_method)
-
-    solenoid_level_figure = plot_sol_levels(rnn_model, curbd_arr, curbd_labels, n_regions, categories, event_time,
-                                            mouse_num, normalize=normalization_method)
-
-    currents_figure = plot_all_currents(rnn_model, curbd_arr, curbd_labels, n_regions, categories, event_time,
-                                        mouse_num, normalize=normalization_method)
-
-    return trial_figure, solenoid_level_figure, currents_figure
-
-# helper functions
-def preprocessing_RNN(df, brain_areas, num_time_bins):
-    df_ = pyaldata.combine_time_bins(df, num_time_bins)
-
-    for col in brain_areas:
-        df_ = pyaldata.remove_low_firing_neurons(df_, col, 1)
-    for col in brain_areas:
-        df_ = pyaldata.transform_signal(df_, col, 'sqrt')
-
-    df_ = pyaldata.merge_signals(df_, brain_areas, "all_spikes")
-
-    df_ = pyaldata.add_firing_rates(df_, 'smooth')
-
-    return df_
-
-def average_by_trial(df, trial_categories):
-    if not isinstance(df['all_rates'].iloc[0], np.ndarray):
-        df['all_rates'] = df['all_rates'].apply(np.array)
-
-    averaged_activity = []
-    for cat in trial_categories:
-        angle_group = df[df['values_Sol_direction'] == cat]['all_rates']
-
-        angle_array = np.stack(angle_group.values)
-
-        mean_activity = np.mean(angle_array, axis=0)
-
-        averaged_activity.append(mean_activity)
-
-    averaged_activity = np.array(averaged_activity)
-
-    return averaged_activity
+### helper functions ###
 
 def get_reset_points(df, activity, areas):
     trial_len = df[areas[0]][0].shape[0]
@@ -103,7 +57,7 @@ def get_reset_points(df, activity, areas):
             point = activity.shape[1]- 1
         reset_points.append(point)
 
-    return reset_points
+    return reset_points, trial_len
 
 def get_regions(df, brain_areas):
     num_neurons = [df[col][1].shape[1] for col in brain_areas]
@@ -124,10 +78,6 @@ def train_RNN(activity, reset_points, regions, bin_size, **kwargs):
         "nRunTrain": 200
     }
     params.update(kwargs)
-
-    print(f"reset points length: {len(reset_points)}")
-    print(f"last reset at: {max(reset_points)}")
-    print(f"RNN input shape: {activity.shape}")
 
     model = curbd.trainMultiRegionRNN(
         activity,
@@ -193,75 +143,75 @@ def CCA_compare(data_real, data_rnn, num_comp):
 
     return canonical_values, scores
 
-def get_last_row_number(filename):
+# def get_last_row_number(filename):
 
-    if not os.path.exists(filename):
-        print(f"File '{filename}' does not exist.")
-        return 0
+#     if not os.path.exists(filename):
+#         print(f"File '{filename}' does not exist.")
+#         return 0
 
-    with open(filename, 'r') as csvfile:
-        reader = csv.DictReader(csvfile)
-        last_row = None
-        for last_row in reader:
-            pass
-        print(last_row)
-        if last_row:
-            return int(last_row['model_idx'])
-        else:
-            return 0
+#     with open(filename, 'r') as csvfile:
+#         reader = csv.DictReader(csvfile)
+#         last_row = None
+#         for last_row in reader:
+#             pass
+#         print(last_row)
+#         if last_row:
+#             return int(last_row['model_idx'])
+#         else:
+#             return 0
 
-def write_results_csv(model, scores, filename):
-    model_idx = get_last_row_number(filename) + 1
+# def write_results_csv(model, scores, filename):
+#     model_idx = get_last_row_number(filename) + 1
 
-    model_results = {"model_idx": model_idx,
-                     "dtFactor": model['params']['dtFactor'],
-                     "binSize": model['dtData'],
-                     "tauRNN": model['params']['tauRNN'],
-                     "ampInWN": model['params']['ampInWN'],
-                     "pVar": model['pVars'][-1],
-                     "chi2": model['chi2s'][-1],
-                     "CCA_score": scores[0]}
+#     model_results = {"model_idx": model_idx,
+#                      "dtFactor": model['params']['dtFactor'],
+#                      "binSize": model['dtData'],
+#                      "tauRNN": model['params']['tauRNN'],
+#                      "ampInWN": model['params']['ampInWN'],
+#                      "pVar": model['pVars'][-1],
+#                      "chi2": model['chi2s'][-1],
+#                      "CCA_score": scores[0]}
 
-    file_exists = os.path.isfile(filename)
+#     file_exists = os.path.isfile(filename)
 
-    with open(filename, 'a', newline='') as csvfile:
-        fieldnames = ['model_idx', 'dtFactor', 'binSize', 'tauRNN', 'ampInWN', 'pVar', 'chi2', 'CCA_score']
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+#     with open(filename, 'a', newline='') as csvfile:
+#         fieldnames = ['model_idx', 'dtFactor', 'binSize', 'tauRNN', 'ampInWN', 'pVar', 'chi2', 'CCA_score']
+#         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
-        # Write header only if file does not exist (so it's added just once)
-        if not file_exists:
-            writer.writeheader()
+#         # Write header only if file does not exist (so it's added just once)
+#         if not file_exists:
+#             writer.writeheader()
 
-        writer.writerow(model_results)
+#         writer.writerow(model_results)
 
-    return model_idx
+#     return model_idx
 
-def save_plot(figures, filenames, folder_name, base_dir):
-    """
-    Saves the given figure to a new folder with a unique name for each run.
+# def save_plot(figures, filenames, folder_name, base_dir):
+#     """
+#     Saves the given figure to a new folder with a unique name for each run.
 
-    Parameters:
-        figures list of (matplotlib.figure.Figure): The figure to save.
-        folder_name (str): Name of the folder to be created
-        base_dir (str): The base directory to store all plot folders.
+#     Parameters:
+#         figures list of (matplotlib.figure.Figure): The figure to save.
+#         folder_name (str): Name of the folder to be created
+#         base_dir (str): The base directory to store all plot folders.
 
-    Returns:
-        str: The path where the figure was saved.
-    """
-    run_folder = os.path.join(base_dir, folder_name)
-    os.makedirs(run_folder, exist_ok=True)
-    file_paths = []
+#     Returns:
+#         str: The path where the figure was saved.
+#     """
+#     run_folder = os.path.join(base_dir, folder_name)
+#     os.makedirs(run_folder, exist_ok=True)
+#     file_paths = []
 
-    for i in range(len(figures)):
-        fig = figures[i]
-        file_path = os.path.join(run_folder, f"{filenames[i]}.png")
-        file_paths.append(file_path)
-        fig.savefig(file_path, dpi=300)
-        plt.close(fig)
+#     for i in range(len(figures)):
+#         fig = figures[i]
+#         file_path = os.path.join(run_folder, f"{filenames[i]}.png")
+#         file_paths.append(file_path)
+#         fig.savefig(file_path, dpi=300)
+#         plt.close(fig)
 
-    return file_paths
+#     return file_paths
 
-def save_results(model, scores, csv_filename, data_dir, figures, plot_filenames, printing=True):
+# def save_results(model, scores, csv_filename, data_dir, figures, plot_filenames, printing=True):
     model_idx = write_results_csv(model, scores, csv_filename)
 
     graph_dir = os.path.join(data_dir, "RNN_graphs/")
@@ -299,49 +249,83 @@ def plot_model_accuracy(model, mouse_num):
     fig.tight_layout()
     fig.suptitle(f"RNN Model accurancy - mouse {mouse_num}")
 
-    return fig
-
-def plot_PCA_cum_var(pca_real, pca_rnn, mouse_num):
-    fig = plt.figure(figsize=(6, 4))
-    plt.plot(np.cumsum(pca_real.explained_variance_ratio_), label='real activity')
-    plt.plot(np.cumsum(pca_rnn.explained_variance_ratio_), label='RNN activity')
-
-    plt.xlabel('Number of Principal Components')
-    plt.ylabel('Cumulative Explained Variance')
-    plt.title(f'Cumulative Variance Explained by PCA - mouse {mouse_num}')
-    plt.legend()
-    plt.grid(True)
     plt.show()
 
     return fig
 
-    def plot_3PCs(fig, data, subplot_num, title):
-        ax1 = fig.add_subplot(subplot_num, projection='3d', aspect='equal')
-        for trial in range(data.shape[0]):
-            ax1.plot(data[trial, :, 0],
-                     data[trial, :, 1],
-                     data[trial, :, 2], label=f'Trial {trial + 1}')
-        ax1.set_title(title)
-        ax1.set_xlabel('PC1')
-        ax1.set_ylabel('PC2')
-        ax1.set_zlabel('PC3')
-        ax1.legend(loc='upper left')
-
-def plot_3PCs(fig, data, subplot_num, title):
+def plot_3PCs(fig, real_data, rnn_data, subplot_num, title):
     ax1 = fig.add_subplot(subplot_num, projection='3d', aspect='equal')
-    for trial in range(data.shape[0]):
-        ax1.plot(data[trial, :, 0],
-                 data[trial, :, 1],
-                 data[trial, :, 2], label=f'Trial {trial + 1}')
+
+    # Plot all single trial trajectories for real_data in light grey
+    for trial in range(real_data.shape[0]):
+        ax1.plot(real_data[trial, :, 0],
+                 real_data[trial, :, 1],
+                 real_data[trial, :, 2], color='lightgrey', alpha=0.7)
+
+    # Plot all single trial trajectories for rnn_data in light blue
+    for trial in range(rnn_data.shape[0]):
+        ax1.plot(rnn_data[trial, :, 0],
+                 rnn_data[trial, :, 1],
+                 rnn_data[trial, :, 2], color='lightblue', alpha=0.7)
+
+    # Compute and plot the averaged trajectory for real_data in solid red
+    avg_real_trajectory = np.mean(real_data, axis=0)
+    ax1.plot(avg_real_trajectory[:, 0], avg_real_trajectory[:, 1], avg_real_trajectory[:, 2], 
+             color='red', linewidth=3, label='Average Trajectory (Real)')
+
+    # Compute and plot the averaged trajectory for rnn_data in dashed blue
+    avg_rnn_trajectory = np.mean(rnn_data, axis=0)
+    ax1.plot(avg_rnn_trajectory[:, 0], avg_rnn_trajectory[:, 1], avg_rnn_trajectory[:, 2], 
+             color='blue', linestyle='--', linewidth=3, label='Average Trajectory (RNN)')
+
     ax1.set_title(title)
     ax1.set_xlabel('PC1')
     ax1.set_ylabel('PC2')
     ax1.set_zlabel('PC3')
     ax1.legend(loc='upper left')
 
-def plot_PCA(real_data, rnn_data, original_shapes, mouse_num):
-    reconstructed_data_avg = np.split(real_data, np.cumsum(original_shapes)[:-1])
-    reconstructed_rnn = np.split(rnn_data, np.cumsum(original_shapes)[:-1])
+def plot_PCA(real_data, rnn_data, trial_num, mouse_num):
+    reconstructed_data_avg = np.split(real_data, trial_num)
+    reconstructed_rnn = np.split(rnn_data, trial_num)
+    reconstructed_data_avg = np.array(reconstructed_data_avg)
+    reconstructed_rnn = np.array(reconstructed_rnn)
+
+    fig = plt.figure(figsize=(6, 3))
+
+    # Now plot both real_data and rnn_data on the same subplot
+    plot_3PCs(fig, reconstructed_data_avg, reconstructed_rnn, 111, 'Comparison of Recorded and RNN Simulated Data')
+
+    plt.suptitle(f'First 3PCs Plot Comparison - Mouse {mouse_num}', fontsize=16)
+    plt.tight_layout()
+    plt.show()
+
+    return fig
+
+
+
+# def plot_3PCs(fig, data, subplot_num, title):
+#     ax1 = fig.add_subplot(subplot_num, projection='3d', aspect='equal')
+
+#     # Plot all single trial trajectories in light grey
+#     for trial in range(data.shape[0]):
+#         ax1.plot(data[trial, :, 0],
+#                  data[trial, :, 1],
+#                  data[trial, :, 2], color='lightgrey', alpha=0.7)
+
+#     # Compute and plot the averaged trajectory in bold color
+#     avg_trajectory = np.mean(data, axis=0)
+#     ax1.plot(avg_trajectory[:, 0], avg_trajectory[:, 1], avg_trajectory[:, 2], 
+#              color='red', linewidth=3, label='Average Trajectory')
+
+#     ax1.set_title(title)
+#     ax1.set_xlabel('PC1')
+#     ax1.set_ylabel('PC2')
+#     ax1.set_zlabel('PC3')
+#     ax1.legend(loc='upper left')
+
+# def plot_PCA(real_data, rnn_data, trial_num, mouse_num, show_fig):
+    reconstructed_data_avg = np.split(real_data, trial_num)
+    reconstructed_rnn = np.split(rnn_data, trial_num)
     reconstructed_data_avg = np.array(reconstructed_data_avg)
     reconstructed_rnn = np.array(reconstructed_rnn)
 
@@ -349,13 +333,17 @@ def plot_PCA(real_data, rnn_data, original_shapes, mouse_num):
 
     plot_3PCs(fig, reconstructed_data_avg, 121, 'Recorded data')
     plot_3PCs(fig, reconstructed_rnn, 122, 'RNN simulated data')
+    
     plt.suptitle(f'First 3PCs plot comparison - mouse {mouse_num}', fontsize=16)
     plt.tight_layout()
-    plt.show()
+
+    if not show_fig:
+        plt.close(fig)
+
     return fig
 
 def plot_CCA(data_cs, rnn_cs, labels, num_comp, mouse_num):
-    fig = plt.figure(figsize=(6, 4))
+    fig = plt.figure(figsize=(6, 3))
     for data_c, rnn_c, label in zip(data_cs, rnn_cs, labels):
         corrs = [np.corrcoef(data_c[:, i], rnn_c[:, i])[0, 1] for i in range(num_comp)]
         plt.plot(corrs, label=label)
@@ -367,153 +355,105 @@ def plot_CCA(data_cs, rnn_cs, labels, num_comp, mouse_num):
 
     return fig
 
-def plot_trial_currents(model, curbd_arr, curbd_labels, n_regions, sol_angles, perturbation_time, mouse_num, normalize):
-    '''
-    :param model: rnn model
-    :param curbd_arr: output from curbd
-    :param curbd_labels: output from curbd
-    :param n_regions: number of regions in brain CURBD
-    :param sol_angles: all trial categories
-    :param perturbation_time: needs to be in seconds
-    :param mouse_num: mouse number (M044)
-    :param normalize: either None, or 'z-score' or 'min-max'
-    :return: figure
-    '''
-    fig = pylab.figure(figsize=[12, 8])
-    count = 1
-    for iTarget in range(n_regions):
-        for iSource in range(n_regions):
-            axn = fig.add_subplot(n_regions, n_regions, count)
-            count += 1
+def plot_PCA_cum_var(pca_real, pca_rnn, mouse_num):
+    fig = plt.figure(figsize=(6, 3))
+    plt.plot(np.cumsum(pca_real.explained_variance_ratio_), label='real activity')
+    plt.plot(np.cumsum(pca_rnn.explained_variance_ratio_), label='RNN activity')
 
-            split_size = len(sol_angles)
-            trim_length = curbd_arr[iTarget, iSource].shape[1] - (curbd_arr[iTarget, iSource].shape[1] % split_size)
-            curbd_data = curbd_arr[iTarget, iSource][:, :trim_length]
-            arr = np.array(np.split(curbd_data, len(sol_angles), axis=1))
-
-            if normalize == 'z-score':
-                mean_val = np.mean(arr)
-                std_val = np.std(arr)
-                arr = (arr - mean_val) / std_val
-            elif normalize == 'min-max':
-                arr_min = np.min(arr)
-                arr_max = np.max(arr)
-                arr = (arr - arr_min) / (arr_max - arr_min)
-
-            mean_arr = np.mean(arr, axis=(0, 1))
-            trials_mean = np.mean(arr, axis=1)
-
-            time = np.array(np.split(model['tRNN'][:trim_length], len(sol_angles)))
-
-            # plot CURBD means
-            for i in range(len(trials_mean)):
-                trial = trials_mean[i]
-                axn.plot(time[0], trial, color='lightblue', linewidth=0.5)
-            axn.plot(time[0], mean_arr, color='steelblue', linewidth=2, label='Average across trials')
-
-            # perturbation line
-            axn.axvline(perturbation_time, color='red', linestyle='--', linewidth=1, label='Perturbation time')
-
-            axn.set_title(f'{curbd_labels[iTarget, iSource]} currents')
-            axn.set_xlabel('Time (s)')
-            axn.set_ylabel('Average Activity')
-            axn.title.set_fontsize(16)
-            axn.xaxis.label.set_fontsize(16)
-            axn.yaxis.label.set_fontsize(16)
-            axn.legend(loc='upper left')
-
-    fig.subplots_adjust(hspace=0.4, wspace=0.3)
-    fig.suptitle(f'Currents sorted by Trial Type - {mouse_num}', fontsize='xx-large')
+    plt.xlabel('Number of Principal Components')
+    plt.ylabel('Cumulative Explained Variance')
+    plt.title(f'Cumulative Variance Explained by PCA - mouse {mouse_num}')
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
 
     return fig
 
-def plot_sol_levels(model, curbd_arr, curbd_labels, n_regions, sol_angles, perturbation_time, mouse_num, normalize):
-    fig = pylab.figure(figsize=[12, 8])
-    count = 1
+def format_for_plotting(curbd_arr, curbd_labels, n_regions, trial_len, num_trials):
+    all_currents = []
     for iTarget in range(n_regions):
         for iSource in range(n_regions):
-            axn = fig.add_subplot(n_regions, n_regions, count)
-            count += 1
+            num_neurons = curbd_arr[iTarget, iSource].shape[0]
+            arr = np.reshape(curbd_arr[iTarget, iSource], (num_neurons , num_trials, trial_len))
+            all_currents.append(arr)
 
-            split_size = len(sol_angles)
-            trim_length = curbd_arr[iTarget, iSource].shape[1] - (curbd_arr[iTarget, iSource].shape[1] % split_size)
-            curbd_data = curbd_arr[iTarget, iSource][:, :trim_length]
+    all_currents_labels = curbd_labels.flatten()
 
-            arr = np.array(np.split(curbd_data, len(sol_angles), axis=1))
-            if normalize == 'z-score':
-                mean_val = np.mean(arr)
-                std_val = np.std(arr)
-                arr = (arr - mean_val) / std_val
-            elif normalize == 'min-max':
-                arr_min = np.min(arr)
-                arr_max = np.max(arr)
-                arr = (arr - arr_min) / (arr_max - arr_min)
+    return all_currents, all_currents_labels
 
-            trials_mean = np.mean(arr, axis=1)
+def plot_region_currents(all_currents, all_currents_labels, perturbation_time, bin_size, num_trials, mouse_num):
 
-            top_mean = np.mean(trials_mean[:5], axis=0)
-            bottom_mean = np.mean(trials_mean[5:], axis=0)
+    fig = pylab.figure(figsize=[12, 6])
+    count = 1
 
-            time = np.array(np.split(model['tRNN'][:trim_length], len(sol_angles)))
+    for i in range(len(all_currents)):
 
-            # plot CURBD means
-            for i in range(len(trials_mean)):
-                if i >= 4:  # top solenoids
-                    color = 'lightblue'
-                if i < 4:  # bottom
-                    color = 'peachpuff'
-                trial = trials_mean[i]
-                axn.plot(time[0], trial, color=color, linewidth=0.5)
+        current_data = all_currents[i]
+        current_label = all_currents_labels[i]
+        time_axis = np.linspace(0, current_data.shape[2] * bin_size, current_data.shape[2])
 
-            axn.plot(time[0], top_mean, color='deepskyblue', linewidth=2, label='Average across top solenoid trials')
-            axn.plot(time[0], bottom_mean, color='orange', linewidth=2, label='Average across bottom solenoid trials')
-            # perturbation line
-            axn.axvline(perturbation_time, color='red', linestyle='--', linewidth=1, label='Perturbation time')
+        axn = fig.add_subplot(2, 2, count)
+        count += 1
 
-            axn.set_title(f'{curbd_labels[iTarget, iSource]} currents')
-            axn.set_xlabel('Time (s)')
-            axn.set_ylabel('Average Activity')
-            axn.title.set_fontsize(16)
-            axn.xaxis.label.set_fontsize(16)
-            axn.yaxis.label.set_fontsize(16)
-            axn.legend(fontsize='small')
+        # plotting each trial current
+        for trial_index in range(num_trials):
+            arr = current_data[:, trial_index, :]
+            trial_mean = np.mean(arr, axis = 0)
+            axn.plot(time_axis, trial_mean, color='lightblue', linewidth=0.5)
 
+        # plotting mean current for trial
+        mean_current = np.mean(current_data, axis=(0, 1))
+        
+        axn.plot(time_axis, mean_current, color='steelblue', linewidth=2)
+
+        axn.axvline(perturbation_time, color='red', linestyle='--', linewidth=1, label = 'Perturbation time')
+
+        axn.set_title(f'{current_label} currents')
+        axn.set_xlabel('Time (s)')
+        axn.set_ylabel('Average Activity')
+        axn.title.set_fontsize(16)
+        axn.xaxis.label.set_fontsize(16)
+        axn.yaxis.label.set_fontsize(16)
+        
     fig.subplots_adjust(hspace=0.4, wspace=0.3)
-    fig.suptitle(f'Currents sorted by Solenoid level - {mouse_num}', fontsize='xx-large')
+    fig.suptitle(f'Currents seperated by origin and target region - {mouse_num}', fontsize='xx-large')
+    plt.show()
 
     return fig
+         
+def plot_all_currents(all_currents, all_currents_labels, perturbation_time, num_trials, bin_size, mouse_num):
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    for i in range(len(all_currents)):
+        current_data = all_currents[i]
+        current_label = all_currents_labels[i]
 
-def plot_all_currents(model, curbd_arr, curbd_labels, n_regions, sol_angles, perturbation_time, mouse_num, normalize):
-    fig = pylab.figure(figsize=[12, 8])
+        min_across_trials = np.min(current_data, axis=(1, 2), keepdims=True)
+        max_across_trials = np.max(current_data, axis=(1, 2), keepdims=True)
 
-    for iTarget in range(n_regions):
-        for iSource in range(n_regions):
-            split_size = len(sol_angles)
-            trim_length = curbd_arr[iTarget, iSource].shape[1] - (curbd_arr[iTarget, iSource].shape[1] % split_size)
-            curbd_data = curbd_arr[iTarget, iSource][:, :trim_length]
+        min_max_scaled_data = (current_data - min_across_trials) / (max_across_trials - min_across_trials + 1e-8)
+        time_axis = np.linspace(0, current_data.shape[2] * bin_size, current_data.shape[2])
 
-            arr = np.array(np.split(curbd_data, len(sol_angles), axis=1))
+        # Plot individual trials in light blue
+        for trial_index in range(num_trials):
+            arr = min_max_scaled_data[:, trial_index, :]
+            trial_mean = np.mean(arr, axis=0)
+            ax.plot(time_axis, trial_mean, color='lightblue', linewidth=0.5)
 
-            if normalize == 'z-score':
-                mean_val = np.mean(arr)
-                std_val = np.std(arr)
-                arr = (arr - mean_val) / std_val
-            elif normalize == 'min-max':
-                arr_min = np.min(arr)
-                arr_max = np.max(arr)
-                arr = (arr - arr_min) / (arr_max - arr_min)
+        # Plot mean and SEM (standard error of the mean)
+        mean_current = np.mean(min_max_scaled_data, axis=(0, 1))
+        sem_current = np.std(min_max_scaled_data, axis=(0, 1)) / np.sqrt(min_max_scaled_data.shape[0] * min_max_scaled_data.shape[1])
 
-            mean_arr = np.mean(arr, axis=(0, 1))
-            sem_arr = np.std(arr, axis=(0, 1)) / np.sqrt(arr.shape[0] * arr.shape[1])
-            time = np.array(np.split(model['tRNN'][:trim_length], len(sol_angles)))
+        ax.plot(time_axis, mean_current, linewidth=2, label=f'{current_label} current (Min-Max Rescaled)')
+        ax.fill_between(time_axis, mean_current - sem_current, mean_current + sem_current, alpha=0.3)
 
-            pylab.plot(time[0], mean_arr, linewidth=2, label=f'{curbd_labels[iTarget, iSource]} current')
-            pylab.fill_between(time[0], mean_arr - sem_arr, mean_arr + sem_arr, alpha=0.3)
+    ax.axvline(perturbation_time, color='red', linestyle='--', linewidth=1, label='Perturbation time')
 
-    pylab.axvline(perturbation_time, color='red', linestyle='--', linewidth=1, label='Perturbation time')
-    pylab.title(f'All currents - mouse {mouse_num}')
-    pylab.xlabel('Time (s)')
-    pylab.ylabel('Activity')
-    pylab.legend(loc='upper left')
-    pylab.show()
+    ax.set_title(f'All currents (Min-Max Rescaled) - mouse {mouse_num}')
+    ax.set_xlabel('Time (s)')
+    ax.set_ylabel('Normalized Current Strength')
+    ax.legend(loc='upper left')
+    plt.show()
+
     return fig
