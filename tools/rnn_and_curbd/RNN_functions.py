@@ -245,16 +245,17 @@ def plot_model_accuracy(model, mouse_num):
     axn.plot(model['chi2s'])
     axn.set_ylabel("chi^2", fontsize=16)
     axn.set_xlabel("Iterations", fontsize=16)
-    axn.set_ylim(0, 3)
-    fig.tight_layout()
+    axn.set_ylim(0, 50)
+
     fig.suptitle(f"RNN Model accurancy - mouse {mouse_num}")
+    plt.tight_layout(rect=[0, 0, 1, 0.98])
 
     plt.show()
 
     return fig
 
-def plot_3PCs(fig, real_data, rnn_data, subplot_num, title):
-    ax1 = fig.add_subplot(subplot_num, projection='3d', aspect='equal')
+def plot_3PCs(fig, real_data, rnn_data, subplot_num):
+    ax1 = fig.add_subplot(subplot_num, projection='3d')
 
     # Plot all single trial trajectories for real_data in light grey
     for trial in range(real_data.shape[0]):
@@ -278,7 +279,6 @@ def plot_3PCs(fig, real_data, rnn_data, subplot_num, title):
     ax1.plot(avg_rnn_trajectory[:, 0], avg_rnn_trajectory[:, 1], avg_rnn_trajectory[:, 2], 
              color='blue', linestyle='--', linewidth=3, label='Average Trajectory (RNN)')
 
-    ax1.set_title(title)
     ax1.set_xlabel('PC1')
     ax1.set_ylabel('PC2')
     ax1.set_zlabel('PC3')
@@ -290,12 +290,12 @@ def plot_PCA(real_data, rnn_data, trial_num, mouse_num):
     reconstructed_data_avg = np.array(reconstructed_data_avg)
     reconstructed_rnn = np.array(reconstructed_rnn)
 
-    fig = plt.figure(figsize=(6, 3))
+    fig = plt.figure(figsize=(6, 5))
 
     # Now plot both real_data and rnn_data on the same subplot
-    plot_3PCs(fig, reconstructed_data_avg, reconstructed_rnn, 111, 'Comparison of Recorded and RNN Simulated Data')
+    plot_3PCs(fig, reconstructed_data_avg, reconstructed_rnn, 111)
 
-    plt.suptitle(f'First 3PCs Plot Comparison - Mouse {mouse_num}', fontsize=16)
+    plt.suptitle(f'Recorded vs. RNN data for 3PCs  - Mouse {mouse_num}', fontsize=16)
     plt.tight_layout()
     plt.show()
 
@@ -343,7 +343,7 @@ def plot_PCA(real_data, rnn_data, trial_num, mouse_num):
     return fig
 
 def plot_CCA(data_cs, rnn_cs, labels, num_comp, mouse_num):
-    fig = plt.figure(figsize=(6, 3))
+    fig = plt.figure(figsize=(6, 4))
     for data_c, rnn_c, label in zip(data_cs, rnn_cs, labels):
         corrs = [np.corrcoef(data_c[:, i], rnn_c[:, i])[0, 1] for i in range(num_comp)]
         plt.plot(corrs, label=label)
@@ -356,7 +356,7 @@ def plot_CCA(data_cs, rnn_cs, labels, num_comp, mouse_num):
     return fig
 
 def plot_PCA_cum_var(pca_real, pca_rnn, mouse_num):
-    fig = plt.figure(figsize=(6, 3))
+    fig = plt.figure(figsize=(6, 4))
     plt.plot(np.cumsum(pca_real.explained_variance_ratio_), label='real activity')
     plt.plot(np.cumsum(pca_rnn.explained_variance_ratio_), label='RNN activity')
 
@@ -435,22 +435,16 @@ def plot_all_currents(all_currents, all_currents_labels, perturbation_time, num_
         min_max_scaled_data = (current_data - min_across_trials) / (max_across_trials - min_across_trials + 1e-8)
         time_axis = np.linspace(0, current_data.shape[2] * bin_size, current_data.shape[2])
 
-        # Plot individual trials in light blue
-        for trial_index in range(num_trials):
-            arr = min_max_scaled_data[:, trial_index, :]
-            trial_mean = np.mean(arr, axis=0)
-            ax.plot(time_axis, trial_mean, color='lightblue', linewidth=0.5)
-
         # Plot mean and SEM (standard error of the mean)
         mean_current = np.mean(min_max_scaled_data, axis=(0, 1))
         sem_current = np.std(min_max_scaled_data, axis=(0, 1)) / np.sqrt(min_max_scaled_data.shape[0] * min_max_scaled_data.shape[1])
 
-        ax.plot(time_axis, mean_current, linewidth=2, label=f'{current_label} current (Min-Max Rescaled)')
+        ax.plot(time_axis, mean_current, linewidth=2, label=f'{current_label} current')
         ax.fill_between(time_axis, mean_current - sem_current, mean_current + sem_current, alpha=0.3)
 
     ax.axvline(perturbation_time, color='red', linestyle='--', linewidth=1, label='Perturbation time')
 
-    ax.set_title(f'All currents (Min-Max Rescaled) - mouse {mouse_num}')
+    ax.set_title(f'All currents (Min-Max Rescaled) - mouse {mouse_num}', fontsize='xx-large')
     ax.set_xlabel('Time (s)')
     ax.set_ylabel('Normalized Current Strength')
     ax.legend(loc='upper left')
