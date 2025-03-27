@@ -4,7 +4,7 @@ import pandas as pd
 import pyaldata as pyal
 import seaborn as sns
 from sklearn.decomposition import PCA
-
+from scipy.stats import sem
 from tools import params
 from tools.viz import utilityTools as utility
 
@@ -155,7 +155,7 @@ def plot_participation_ratio_per_session(
     plt.show()
 
 
-def plot_latents(df, areas, trial_type="trial", n_components=10, motion_only=True):
+def plot_latents(df, areas, trial_type="trial", n_components=10, motion_only=True,errorbars=False,errorStat = sem):
 
     axes = []
     category = "values_Sol_direction"
@@ -197,10 +197,23 @@ def plot_latents(df, areas, trial_type="trial", n_components=10, motion_only=Tru
             for tar in targets:
                 df__ = pyal.select_trials(df_, df_[category] == tar)
                 ex = pyal.get_sig_by_trial(df__, "_pca")
-                ex = np.mean(ex, axis=2)[
-                    :, :n_components
-                ]  # Reduce to first 3 PCA components
-                ax.plot(ex[:, row])
+                if errorbars:
+                    ex = ex[:, row,:]
+                    time_axis = np.arange(ex.shape[0])
+                    utility.shaded_errorbar(
+                    ax,
+                    time_axis,
+                    ex,
+                    label=tar,
+                    errorStat = errorStat,
+                
+                )
+                    
+                else:
+                    ex = np.mean(ex, axis=2)[
+                        :, :n_components
+                    ]  # Reduce to first 3 PCA components
+                    ax.plot(ex[:, row])
 
             # Titles and labels
             ax.axvline(x=sol_on_idx, color="r", linestyle="--")
@@ -328,14 +341,6 @@ def plot_VAF_in_moving_window(ax,df_list, areas,n_components,model, epoch_manifo
             color=getattr(params.colors, area, "k"),
         )
 
-    # df_data = pyal.select_trials(df_list[0], trial_query_data_to_explain)
-    # df_data = pyal.restrict_to_interval(df_data, epoch_fun=epoch_to_explain)
-
-    # rates_data = np.concatenate(df_data[area+"_rates"].values, axis=0)
-    # pca_data = PCA(n_components=n_components, svd_solver="full")
-    # pca_data.fit(rates_data)
-    
-    # upper_bound= np.sum(pca_data.explained_variance_ratio_)
    
 
     ax.set_xlabel("Time relative to event (ms)")
@@ -391,15 +396,7 @@ def plot_VAF_increasing_window(ax,df_list, areas,n_components,model,epoch_manifo
             color=getattr(params.colors, area, "k"),
         )
 
-    # df_data = pyal.select_trials(df_list[0], trial_query_data_to_explain)
-    # df_data = pyal.restrict_to_interval(df_data, epoch_fun=epoch_to_explain)
 
-    # rates_data = np.concatenate(df_data[area+"_rates"].values, axis=0)
-    # pca_data = PCA(n_components=n_components, svd_solver="full")
-    # pca_data.fit(rates_data)
-    
-    # upper_bound= np.sum(pca_data.explained_variance_ratio_)
-   
 
     ax.set_xlabel("Time relative to event (ms)")
     ax.set_ylabel(f"VAF")
