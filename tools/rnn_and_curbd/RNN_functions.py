@@ -422,29 +422,37 @@ def plot_region_currents(all_currents, all_currents_labels, perturbation_time, b
 
     return fig
          
-def plot_all_currents(all_currents, all_currents_labels, perturbation_time, num_trials, bin_size, mouse_num):
+def plot_all_currents(all_currents, all_currents_labels, perturbation_time, bin_size, mouse_num, normalize):
     fig, ax = plt.subplots(figsize=(12, 6))
     
     for i in range(len(all_currents)):
         current_data = all_currents[i]
         current_label = all_currents_labels[i]
 
-        min_across_trials = np.min(current_data, axis=(1, 2), keepdims=True)
-        max_across_trials = np.max(current_data, axis=(1, 2), keepdims=True)
+        if normalize == 'min-max':
+            min_across_trials = np.min(current_data, axis=(1, 2), keepdims=True)
+            max_across_trials = np.max(current_data, axis=(1, 2), keepdims=True)
 
-        min_max_scaled_data = (current_data - min_across_trials) / (max_across_trials - min_across_trials + 1e-8)
+            scaled_data = (current_data - min_across_trials) / (max_across_trials - min_across_trials + 1e-8)
+
+        elif normalize == 'z-score':
+            mean_across_trials = np.mean(current_data, axis=(1, 2), keepdims=True)
+            std_across_trials = np.std(current_data, axis=(1, 2), keepdims=True)
+
+            scaled_data = (current_data - mean_across_trials) / (std_across_trials + 1e-8)
+
         time_axis = np.linspace(0, current_data.shape[2] * bin_size, current_data.shape[2])
 
         # Plot mean and SEM (standard error of the mean)
-        mean_current = np.mean(min_max_scaled_data, axis=(0, 1))
-        sem_current = np.std(min_max_scaled_data, axis=(0, 1)) / np.sqrt(min_max_scaled_data.shape[0] * min_max_scaled_data.shape[1])
+        mean_current = np.mean(scaled_data, axis=(0, 1))
+        sem_current = np.std(scaled_data, axis=(0, 1)) / np.sqrt(scaled_data.shape[0] * scaled_data.shape[1])
 
         ax.plot(time_axis, mean_current, linewidth=2, label=f'{current_label} current')
         ax.fill_between(time_axis, mean_current - sem_current, mean_current + sem_current, alpha=0.3)
 
     ax.axvline(perturbation_time, color='red', linestyle='--', linewidth=1, label='Perturbation time')
 
-    ax.set_title(f'All currents (Min-Max Rescaled) - mouse {mouse_num}', fontsize='xx-large')
+    ax.set_title(f'All currents ({normalize}) - mouse {mouse_num}', fontsize='xx-large')
     ax.set_xlabel('Time (s)')
     ax.set_ylabel('Normalized Current Strength')
     ax.legend(loc='upper left')
