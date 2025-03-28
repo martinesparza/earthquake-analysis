@@ -10,9 +10,7 @@ from tools.viz.rasters import plot_heatmap_raster
 def run_initial_report(df: pd.DataFrame, areas: list, trial_selection_criteria=None):
 
     # Preprocess
-    df = preprocess(
-        df, only_trials=False, trial_selection_criteria=trial_selection_criteria
-    )
+    df = preprocess(df, only_trials=False, trial_selection_criteria=trial_selection_criteria)
 
     # Take the three trial types
     df_trials = pyal.select_trials(df, df.trial_name == "trial")
