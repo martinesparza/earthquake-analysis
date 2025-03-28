@@ -224,7 +224,7 @@ def CCA_compare(data_real, data_rnn, num_comp):
 ### plotting functions ###
 
 def plot_neuron_activity(data, title, mouse_num):
-    plt.figure(figsize=(8, 4))
+    plt.figure(figsize=(12, 4))
     plt.pcolormesh(data.T, cmap='viridis', shading='auto')
     plt.colorbar(label='Activity Level')
     plt.title(title + " - mouse " + mouse_num)
@@ -245,7 +245,7 @@ def plot_model_accuracy(model, mouse_num):
     axn.plot(model['chi2s'])
     axn.set_ylabel("chi^2", fontsize=16)
     axn.set_xlabel("Iterations", fontsize=16)
-    axn.set_ylim(0, 50)
+    axn.set_ylim(0, max(model['chi2s']))
 
     fig.suptitle(f"RNN Model accurancy - mouse {mouse_num}")
     plt.tight_layout(rect=[0, 0, 1, 0.98])
