@@ -43,7 +43,7 @@ def PCA_and_CCA(concat_rates, rnn_model, num_components, trial_num, mouse_num, p
 
 ### helper functions ###
 
-def get_reset_points(df, activity, areas):
+def get_reset_points(df, activity, areas, dtFactor):
     trial_len = df[areas[0]][0].shape[0]
     if all(df[col][0].shape[0] == trial_len for col in areas):
         print(f"Trial length: {trial_len}")
@@ -52,9 +52,9 @@ def get_reset_points(df, activity, areas):
 
     reset_points = []
     for i in range(len(df)):
-        point = i * trial_len
-        if point >= activity.shape[1]: # to avoid wierd indexing errors
-            point = activity.shape[1]- 1
+        point = i * trial_len * dtFactor
+        if point >= (activity.shape[0]*dtFactor): # to avoid wierd indexing errors
+            point = (activity.shape[0]*dtFactor)- 1
         reset_points.append(point)
 
     return reset_points, trial_len
@@ -301,47 +301,6 @@ def plot_PCA(real_data, rnn_data, trial_num, mouse_num):
 
     return fig
 
-
-
-# def plot_3PCs(fig, data, subplot_num, title):
-#     ax1 = fig.add_subplot(subplot_num, projection='3d', aspect='equal')
-
-#     # Plot all single trial trajectories in light grey
-#     for trial in range(data.shape[0]):
-#         ax1.plot(data[trial, :, 0],
-#                  data[trial, :, 1],
-#                  data[trial, :, 2], color='lightgrey', alpha=0.7)
-
-#     # Compute and plot the averaged trajectory in bold color
-#     avg_trajectory = np.mean(data, axis=0)
-#     ax1.plot(avg_trajectory[:, 0], avg_trajectory[:, 1], avg_trajectory[:, 2], 
-#              color='red', linewidth=3, label='Average Trajectory')
-
-#     ax1.set_title(title)
-#     ax1.set_xlabel('PC1')
-#     ax1.set_ylabel('PC2')
-#     ax1.set_zlabel('PC3')
-#     ax1.legend(loc='upper left')
-
-# def plot_PCA(real_data, rnn_data, trial_num, mouse_num, show_fig):
-    reconstructed_data_avg = np.split(real_data, trial_num)
-    reconstructed_rnn = np.split(rnn_data, trial_num)
-    reconstructed_data_avg = np.array(reconstructed_data_avg)
-    reconstructed_rnn = np.array(reconstructed_rnn)
-
-    fig = plt.figure(figsize=(20, 10))
-
-    plot_3PCs(fig, reconstructed_data_avg, 121, 'Recorded data')
-    plot_3PCs(fig, reconstructed_rnn, 122, 'RNN simulated data')
-    
-    plt.suptitle(f'First 3PCs plot comparison - mouse {mouse_num}', fontsize=16)
-    plt.tight_layout()
-
-    if not show_fig:
-        plt.close(fig)
-
-    return fig
-
 def plot_CCA(data_cs, rnn_cs, labels, num_comp, mouse_num):
     fig = plt.figure(figsize=(6, 4))
     for data_c, rnn_c, label in zip(data_cs, rnn_cs, labels):
@@ -370,16 +329,25 @@ def plot_PCA_cum_var(pca_real, pca_rnn, mouse_num):
 
     return fig
 
-def format_for_plotting(curbd_arr, curbd_labels, n_regions, trial_len, num_trials):
+def format_for_plotting(curbd_arr, curbd_labels, n_regions, reset_points):
     all_currents = []
     for iTarget in range(n_regions):
         for iSource in range(n_regions):
             num_neurons = curbd_arr[iTarget, iSource].shape[0]
-            arr = np.reshape(curbd_arr[iTarget, iSource], (num_neurons , num_trials, trial_len))
-            all_currents.append(arr)
+            # set up space for data
+            new_row = [[] for _ in range(num_neurons)]
+        
+            # iterate over neurons
+            for neuron in range(num_neurons):
+                curr = curbd_arr[iTarget, iSource][neuron]
+                for p in range(len(reset_points)):
+                    point = reset_points[p]
+                    if point != 0:
+                        new_row[neuron].append(curr[reset_points[p-1]:point])
+            new_row = np.array(new_row)
+            all_currents.append(new_row)
 
     all_currents_labels = curbd_labels.flatten()
-
     return all_currents, all_currents_labels
 
 def plot_region_currents(all_currents, all_currents_labels, perturbation_time, bin_size, num_trials, mouse_num):
@@ -457,5 +425,38 @@ def plot_all_currents(all_currents, all_currents_labels, perturbation_time, bin_
     ax.set_ylabel('Normalized Current Strength')
     ax.legend(loc='upper left')
     plt.show()
+
+    return fig
+
+def plot_all_currents_seperate(all_currents, all_currents_labels, perturbation_time, bin_size, dtFactor, mouse_num):
+    fig = pylab.figure(figsize=[12, 8])
+    count = 1
+    n_regions = len(all_currents)
+    colours = ['C3', 'C2', 'C1', 'C0']
+          
+    for i in range(len(all_currents)):
+        current_data = all_currents[i]
+        current_label = all_currents_labels[i]
+        axn = fig.add_subplot(int(n_regions/2), int(n_regions/2), count)
+        count += 1
+
+        time_axis = np.linspace(0, current_data.shape[2] * bin_size/dtFactor, current_data.shape[2])
+
+        # Plot mean and SEM (standard error of the mean)
+        mean_current = np.mean(current_data, axis=(0, 1))
+        sem_current = np.std(current_data, axis=(0, 1)) / np.sqrt(current_data.shape[0] * current_data.shape[1])
+
+        axn.plot(time_axis, mean_current, linewidth=2, color=colours[i])
+        axn.fill_between(time_axis, mean_current - sem_current, mean_current + sem_current, alpha=0.3, color=colours[i])
+
+        axn.axvline(perturbation_time, color='red', linestyle='--', linewidth=1, label='Perturbation time')
+
+        axn.set_title(f'{current_label} mean current')
+        axn.set_xlabel('Time (s)')
+        axn.set_ylabel('Current Strength')
+
+    fig.suptitle(f'Average current across all trials- mouse {mouse_num}', fontsize='xx-large')
+    fig.tight_layout(rect=[0, 0, 1, 0.98])
+    fig.show()
 
     return fig
