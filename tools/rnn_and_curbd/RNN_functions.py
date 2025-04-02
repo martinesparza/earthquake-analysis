@@ -64,9 +64,35 @@ def PCA_by_region(concat_rates, rnn_model, regions, trial_num, mouse_num):
     PCA_real_data, pcas_real = PCA_by_region_helper(data_real, regions)
     PCA_rnn_data, pcas_rnn = PCA_by_region_helper(data_rnn , regions)
     
-    PCs_by_region_figure = plot_PCs_by_region(PCA_real_data, PCA_rnn_data, trial_num, regions, mouse_num)
+    # PCs_by_region_figure = plot_PCs(PCA_real_data, PCA_rnn_data, trial_num, regions, mouse_num)
+    num_plots = len(regions)
+    labels = regions[:, 0]
+    re_real_data = []
+    re_rnn_data = []
+    
+    for r in range(len(regions)):
+        re_real = np.split(PCA_real_data[r], trial_num) 
+        re_rnn = np.split(PCA_rnn_data[r], trial_num)
+        re_real = np.array(re_real)
+        re_rnn = np.array(re_rnn)
+        mean_real = np.mean(re_real, axis=0)
+        mean_rnn = np.mean(re_rnn, axis=0)
+        re_real_data.append(mean_real)
+        re_rnn_data.append(mean_rnn)
+    
+    fig = plt.figure(figsize=(10, 6))
+    for r in range(num_plots):
+        axn = fig.add_subplot(1, num_plots, r + 1)
+        axn.plot(re_real_data[r][ :, 0],re_real_data[r][ :, 1], label = 'experimental data', linewidth=3)
+        axn.plot(re_rnn_data[r][:, 0],re_rnn_data[r][ :, 1], label = 'RNN model data', linestyle='--', linewidth=3)
+        axn.set_xlabel('PC1')
+        axn.set_ylabel('PC2')
+        axn.legend(fontsize=14, loc='upper left')
+        axn.set_title(f"{labels[r]} activity", fontsize=16)
+    fig.suptitle(f"PCA of Model vs Experimental Trial Averaged Data - mouse {mouse_num}", fontsize=20)
+    fig.tight_layout()
 
-    return PCs_by_region_figure
+    return fig
    
 
 ### helper functions ###
@@ -357,36 +383,6 @@ def plot_PCA_cum_var(pca_real, pca_rnn, mouse_num):
 
     return fig
 
-def plot_PCs_by_region(real_data, rnn_data, trial_num, regions, mouse_num):
-    num_plots = len(regions)
-    labels = regions[:, 0]
-    re_real_data = []
-    re_rnn_data = []
-    
-    for r in range(len(regions)):
-        re_real = np.split(real_data[r], trial_num) 
-        re_rnn = np.split(rnn_data[r], trial_num)
-        re_real = np.array(re_real)
-        re_rnn = np.array(re_rnn)
-        mean_real = np.mean(re_real, axis=0)
-        mean_rnn = np.mean(re_rnn, axis=0)
-        re_real_data.append(mean_real)
-        re_rnn_data.append(mean_rnn)
-    
-    fig = plt.figure(figsize=(12, 6))
-    for r in range(num_plots):
-        axn = fig.add_subplot(1, num_plots, r + 1)
-        axn.plot(re_real_data[r][ :, 0],re_real_data[r][ :, 1], label = 'experimental data', linewidth=3)
-        axn.plot(re_rnn_data[r][:, 0],re_rnn_data[r][ :, 1], label = 'RNN model data', linestyle='--', linewidth=3)
-        axn.set_xlabel('PC1')
-        axn.set_ylabel('PC2')
-        axn.legend(fontsize=16, loc='upper left')
-        axn.set_title(f"{labels[r]} activity", fontsize=16)
-    fig.suptitle(f"PCA of Model vs Experimental Trial Averaged Data - mouse {mouse_num}", fontsize=20)
-    fig.tight_layout()
-    
-    return fig
-
 def format_for_plotting(curbd_arr, curbd_labels, n_regions, reset_points):
     all_currents = []
     for iTarget in range(n_regions):
@@ -402,6 +398,7 @@ def format_for_plotting(curbd_arr, curbd_labels, n_regions, reset_points):
                     point = reset_points[p]
                     if point != 0:
                         new_row[neuron].append(curr[reset_points[p-1]:point])
+
             new_row = np.array(new_row)
             all_currents.append(new_row)
 
@@ -486,7 +483,7 @@ def plot_all_currents(all_currents, all_currents_labels, perturbation_time, bin_
 
     return fig
 
-def plot_all_currents_seperate(all_currents, all_currents_labels, perturbation_time, bin_size, dtFactor, mouse_num):
+def plot_all_currents_seperate(all_currents, all_currents_labels, perturbation_time, bin_size, dtFactor, mouse_num, plot_single=True):
     fig = pylab.figure(figsize=[12, 8])
     count = 1
     n_regions = len(all_currents)
@@ -497,12 +494,15 @@ def plot_all_currents_seperate(all_currents, all_currents_labels, perturbation_t
         current_label = all_currents_labels[i]
         axn = fig.add_subplot(int(n_regions/2), int(n_regions/2), count)
         count += 1
-
         time_axis = np.linspace(0, current_data.shape[2] * bin_size/dtFactor, current_data.shape[2])
 
         # Plot mean and SEM (standard error of the mean)
         mean_current = np.mean(current_data, axis=(0, 1))
         sem_current = np.std(current_data, axis=(0, 1)) / np.sqrt(current_data.shape[0] * current_data.shape[1])
+        if plot_single:
+            mean_neurons = np.mean(current_data, axis=0)
+            for j in range(0, mean_neurons.shape[0], 5):
+                axn.plot(time_axis, mean_neurons[j].T, linewidth=0.5, color='lightblue', alpha=0.5)
 
         axn.plot(time_axis, mean_current, linewidth=2, color=colours[i])
         axn.fill_between(time_axis, mean_current - sem_current, mean_current + sem_current, alpha=0.3, color=colours[i])
@@ -512,6 +512,7 @@ def plot_all_currents_seperate(all_currents, all_currents_labels, perturbation_t
         axn.set_title(f'{current_label} mean current')
         axn.set_xlabel('Time (s)')
         axn.set_ylabel('Current Strength')
+        # axn.set_ylim(min(mean_current)-0.005, max(mean_current)+0.005)
 
     fig.suptitle(f'Average current across all trials- mouse {mouse_num}', fontsize='xx-large')
     fig.tight_layout(rect=[0, 0, 1, 0.98])
