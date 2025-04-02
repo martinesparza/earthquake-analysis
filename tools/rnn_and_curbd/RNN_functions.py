@@ -63,30 +63,7 @@ def PCA_by_region(concat_rates, rnn_model, regions, trial_num, mouse_num):
 
     PCA_real_data, pcas_real = PCA_by_region_helper(data_real, regions)
     PCA_rnn_data, pcas_rnn = PCA_by_region_helper(data_rnn , regions)
-
-    # var_plots = []
-    # for r in range(len(regions)):
-    #     pca_real = pcas_real[r]
-    #     pca_rnn = pcas_rnn[r]
-    #     variance_plot = plot_PCA_cum_var(pca_real, pca_rnn, mouse_num)
-    #     plt.close(variance_plot)
-    #     var_plots.append(variance_plot)
-
-    # final_fig, axes = plt.subplots(1, len(var_plots), figsize=(5 * len(var_plots), 5))
-    # if len(var_plots) == 1:
-    #     axes = [axes]
-    # for ax, fig in zip(axes, var_plots):
-    #     for orig_ax in fig.axes:
-    #         for line in orig_ax.get_lines():
-    #             ax.plot(line.get_xdata(), line.get_ydata(), label=line.get_label())
-
-    #     ax.legend()
-    #     ax.set_title(orig_ax.get_title())
-
-    # plt.tight_layout()
-    # plt.suptitle(f'Cumulative Variance Explained by PCA - mouse {mouse_num}', fontsize=16)
-    # plt.show()
-
+    
     PCs_by_region_figure = plot_PCs_by_region(PCA_real_data, PCA_rnn_data, trial_num, regions, mouse_num)
 
     return PCs_by_region_figure
