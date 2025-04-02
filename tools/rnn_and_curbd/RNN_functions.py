@@ -80,7 +80,7 @@ def PCA_by_region(concat_rates, rnn_model, regions, trial_num, mouse_num):
         re_real_data.append(mean_real)
         re_rnn_data.append(mean_rnn)
     
-    fig = plt.figure(figsize=(10, 6))
+    fig = plt.figure(figsize=(12,6))
     for r in range(num_plots):
         axn = fig.add_subplot(1, num_plots, r + 1)
         axn.plot(re_real_data[r][ :, 0],re_real_data[r][ :, 1], label = 'experimental data', linewidth=3)
