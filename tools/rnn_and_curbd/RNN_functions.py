@@ -36,10 +36,61 @@ def PCA_and_CCA(concat_rates, rnn_model, num_components, trial_num, mouse_num, p
         print(f"CCA score for control on real data: {scores[1]}")
         print(f"CCA score for control on rnn data: {scores[2]}")
 
-    CCA_figure = plot_CCA(canonical_values[:, 0], canonical_values[:, 1],
-                          ['Real & RNN data', 'Control - Real data', 'Control - RNN data'], num_components, mouse_num)
+    # CCA_figure = plot_CCA(canonical_values[:, 0], canonical_values[:, 1],
+    #                       ['Real & RNN data', 'Control - Real data', 'Control - RNN data'], num_components, mouse_num)
 
-    return scores, variance_figure, PCA_figure, CCA_figure
+    return scores, variance_figure, PCA_figure
+
+def PCA_by_region_helper(data, regions):
+    num_regions = len(regions)
+    PCA_data = []
+    pcas = []
+    for r in range(num_regions):
+        # select region data
+        neurons = len(regions[r][1])
+        first_idx = regions[r][1][0]
+        last_idx = regions[r][1][-1]
+        region_data = data[:, first_idx:last_idx,]
+        # PCA and save
+        pca = PCA(n_components = neurons-1)
+        PCA_data.append(pca.fit_transform(region_data))
+        pcas.append(pca)
+    return PCA_data, pcas
+
+def PCA_by_region(concat_rates, rnn_model, regions, trial_num, mouse_num):
+    data_rnn = rnn_model['Adata'].T
+    data_real = rescale_array(concat_rates)
+
+    PCA_real_data, pcas_real = PCA_by_region_helper(data_real, regions)
+    PCA_rnn_data, pcas_rnn = PCA_by_region_helper(data_rnn , regions)
+
+    # var_plots = []
+    # for r in range(len(regions)):
+    #     pca_real = pcas_real[r]
+    #     pca_rnn = pcas_rnn[r]
+    #     variance_plot = plot_PCA_cum_var(pca_real, pca_rnn, mouse_num)
+    #     plt.close(variance_plot)
+    #     var_plots.append(variance_plot)
+
+    # final_fig, axes = plt.subplots(1, len(var_plots), figsize=(5 * len(var_plots), 5))
+    # if len(var_plots) == 1:
+    #     axes = [axes]
+    # for ax, fig in zip(axes, var_plots):
+    #     for orig_ax in fig.axes:
+    #         for line in orig_ax.get_lines():
+    #             ax.plot(line.get_xdata(), line.get_ydata(), label=line.get_label())
+
+    #     ax.legend()
+    #     ax.set_title(orig_ax.get_title())
+
+    # plt.tight_layout()
+    # plt.suptitle(f'Cumulative Variance Explained by PCA - mouse {mouse_num}', fontsize=16)
+    # plt.show()
+
+    PCs_by_region_figure = plot_PCs_by_region(PCA_real_data, PCA_rnn_data, trial_num, regions, mouse_num)
+
+    return PCs_by_region_figure
+   
 
 ### helper functions ###
 
@@ -327,6 +378,36 @@ def plot_PCA_cum_var(pca_real, pca_rnn, mouse_num):
     plt.tight_layout()
     plt.show()
 
+    return fig
+
+def plot_PCs_by_region(real_data, rnn_data, trial_num, regions, mouse_num):
+    num_plots = len(regions)
+    labels = regions[:, 0]
+    re_real_data = []
+    re_rnn_data = []
+    
+    for r in range(len(regions)):
+        re_real = np.split(real_data[r], trial_num) 
+        re_rnn = np.split(rnn_data[r], trial_num)
+        re_real = np.array(re_real)
+        re_rnn = np.array(re_rnn)
+        mean_real = np.mean(re_real, axis=0)
+        mean_rnn = np.mean(re_rnn, axis=0)
+        re_real_data.append(mean_real)
+        re_rnn_data.append(mean_rnn)
+    
+    fig = plt.figure(figsize=(12, 6))
+    for r in range(num_plots):
+        axn = fig.add_subplot(1, num_plots, r + 1)
+        axn.plot(re_real_data[r][ :, 0],re_real_data[r][ :, 1], label = 'experimental data', linewidth=3)
+        axn.plot(re_rnn_data[r][:, 0],re_rnn_data[r][ :, 1], label = 'RNN model data', linestyle='--', linewidth=3)
+        axn.set_xlabel('PC1')
+        axn.set_ylabel('PC2')
+        axn.legend(fontsize=16, loc='upper left')
+        axn.set_title(f"{labels[r]} activity", fontsize=16)
+    fig.suptitle(f"PCA of Model vs Experimental Trial Averaged Data - mouse {mouse_num}", fontsize=20)
+    fig.tight_layout()
+    
     return fig
 
 def format_for_plotting(curbd_arr, curbd_labels, n_regions, reset_points):
