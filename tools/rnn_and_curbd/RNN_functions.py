@@ -9,12 +9,14 @@ from sklearn.cross_decomposition import CCA
 from tools.curbd import curbd
 
 ### core RNN and CURBD functions ###
-def RNN(formated_rates, resets, regions_arr, data, mouse_num, **kwargs):
+def RNN(formated_rates, resets, regions_arr, data, mouse_num, graph = False, **kwargs):
     rnn_model = train_RNN(formated_rates, resets, regions_arr, data.bin_size[0], **kwargs)
 
-    figure = plot_model_accuracy(rnn_model, mouse_num)
-
-    return rnn_model, figure
+    if graph:
+        figure = plot_model_accuracy(rnn_model, mouse_num)
+        return rnn_model, figure
+    else:
+        return rnn_model
 
 def PCA_and_CCA(concat_rates, rnn_model, num_components, trial_num, mouse_num, printing=True):
     data_rnn = rnn_model['Adata'].T
