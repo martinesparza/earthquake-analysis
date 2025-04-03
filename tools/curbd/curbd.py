@@ -204,6 +204,48 @@ def trainMultiRegionRNN(
         rModelSample = RNN[iTarget, :][:, iModelSample]
         distance = np.linalg.norm(Adata[iTarget, :] - rModelSample)
         pVar = 1 - (distance / (math.sqrt(len(iTarget) * len(tData)) * stdData)) ** 2
+        
+        ### MY ADDITION - BREAK IF VAR IS NEGATIVE ###
+        if pVar < 0:
+            pVars.append(pVar)
+            chi2s.append(chi2)
+            print("trial=%d pVar=%f chi2=%f" % (nRun, pVar, chi2))
+            print("Invalid model generated")
+
+            out_params = {}
+            out_params["dtFactor"] = dtFactor
+            out_params["number_units"] = number_units
+            out_params["g"] = g
+            out_params["P0"] = P0
+            out_params["tauRNN"] = tauRNN
+            out_params["tauWN"] = tauWN
+            out_params["ampInWN"] = ampInWN
+            out_params["nRunTot"] = nRunTot
+            out_params["nRunTrain"] = nRunTrain
+            out_params["nRunFree"] = nRunFree
+            out_params["nonLinearity"] = nonLinearity
+            out_params["resetPoints"] = resetPoints
+
+            out = {}
+            out["regions"] = regions
+            out["RNN"] = RNN
+            out["tRNN"] = tRNN
+            out["dtRNN"] = dtRNN
+            out["Adata"] = Adata
+            out["tData"] = tData
+            out["dtData"] = dtData
+            out["J"] = J
+            out["J0"] = J0
+            out["chi2s"] = chi2s
+            out["pVars"] = pVars
+            out["stdData"] = stdData
+            out["inputWN"] = inputWN
+            out["iTarget"] = iTarget
+            out["iNonTarget"] = iNonTarget
+            out["params"] = out_params
+
+            return out
+
         pVars.append(pVar)
         chi2s.append(chi2)
         if verbose:
