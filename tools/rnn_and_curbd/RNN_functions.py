@@ -99,10 +99,11 @@ def PCA_by_region(concat_rates, rnn_model, regions, trial_num, mouse_num):
 
 ### helper functions ###
 
-def get_reset_points(df, activity, areas, dtFactor):
+def get_reset_points(df, activity, areas, dtFactor, printing = False):
     trial_len = df[areas[0]][0].shape[0]
     if all(df[col][0].shape[0] == trial_len for col in areas):
-        print(f"Trial length: {trial_len}")
+        if printing:
+            print(f"Trial length: {trial_len}")
     else:
         print("Variable trial length!")
 
@@ -140,7 +141,7 @@ def train_RNN(activity, reset_points, regions, bin_size, **kwargs):
         dtData=bin_size,
         regions=regions,
         resetPoints=reset_points,
-        verbose=True,
+        verbose=False,
         plotStatus=False,
         nRunFree=1,
         **params
