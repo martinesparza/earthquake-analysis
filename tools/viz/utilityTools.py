@@ -1,5 +1,14 @@
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.colors import LinearSegmentedColormap
+
+from tools.params import colors
+
+
+def create_cmap_from_area(area):
+    target_colour = getattr(colors, area)
+    cmap = LinearSegmentedColormap.from_list("white_to_teal", ["#ffffff", target_colour])
+    return cmap
 
 
 # from Mo's repo

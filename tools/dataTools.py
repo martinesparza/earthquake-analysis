@@ -7,6 +7,22 @@ import pyaldata as pyal
 from sklearn.decomposition import PCA
 
 
+def reshape_to_trials(signal_1d, trial_length_samples):
+    total_samples = len(signal_1d)
+    if total_samples % trial_length_samples != 0:
+        raise ValueError("Total number of samples is not divisible by trial length.")
+
+    n_trials = total_samples // trial_length_samples
+    return signal_1d.reshape(n_trials, trial_length_samples)
+
+
+def get_trial_x_time_per_neuron(df, area, neuron_id, trial_length=200):
+    df_trials = pyal.select_trials(df, df.trial_name == "trial")
+    trials_arr = pyal.concat_trials(df_trials[:-1], f"{area}_spikes")[:, neuron_id]
+
+    return reshape_to_trials(trials_arr, trial_length)
+
+
 def get_data_array(
     data_list: list[pd.DataFrame],
     trial_cat="values_Sol_direction",

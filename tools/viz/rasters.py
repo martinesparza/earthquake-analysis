@@ -1,45 +1,127 @@
+import math
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pyaldata as pyal
-import seaborn as sns
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-from tools.params import Params
+import tools.viz.utilityTools as vizutils
+from tools.dataTools import get_trial_x_time_per_neuron
+from tools.params import Params, colors
 
 
-def plot_fr_raster(df, axes: list, sol_directions: list, trial=15, area="Dls"):
-    data = []
+def plot_single_neuron_raster_and_psth(df, area, neuron_id, vmin=None, vmax=None, vline=None):
+    """Plots psth and raster of a single neuron for every trial
 
-    # example trial data for each target
-    for sol in sol_directions:
-        df_ = pyal.select_trials(df, df.values_Sol_direction == sol)
-        fr = df_[f"{area}_rates"][trial]
-        data.append(fr)
+    Args:
+        df (_type_): _description_
+        area (_type_): _description_
+        neuron_id (_type_): _description_
+        cmap (str, optional): _description_. Defaults to "copper_r".
+        vmin (_type_, optional): _description_. Defaults to None.
+        vmax (_type_, optional): _description_. Defaults to None.
+        vline (_type_, optional): _description_. Defaults to None.
+    """
 
-    data = np.array(data)  # 3d array of sol directions, time, neurons
-    vmin = np.amin(data, axis=(0, 1))  # Minimum for each neuron across sols and time
-    vmax = np.amax(data, axis=(0, 1))  # Maximum for each neuron across sols and time
+    trials_arr = get_trial_x_time_per_neuron(df, area=area, neuron_id=neuron_id)
+    fig, ax = plt.subplots(
+        2, 1, figsize=(5, 5), sharex="all", height_ratios=[1, 4], gridspec_kw={"hspace": 0.05}
+    )
+    print(area)
+    im = ax[1].imshow(
+        trials_arr,
+        aspect="auto",
+        interpolation="nearest",
+        cmap=vizutils.create_cmap_from_area(area),
+        origin="upper",
+        vmin=vmin,
+        vmax=vmax,
+    )
 
-    for solData, ax, sol_direction in zip(data, axes, sol_directions):
-        solData -= vmin
-        solData /= vmax - vmin
-        im = ax.imshow(solData.T, aspect="auto", cmap="viridis")
-        ax.axvline(x=df_.idx_sol_on[0], color="red", linestyle="--", linewidth=2)
-        ax.tick_params("both", bottom=False, left=False, labelbottom=False, labelleft=False)
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        ax.spines["bottom"].set_visible(False)
-        ax.spines["left"].set_visible(False)
-        ax.set_title(f"Sol: {sol_direction}")
+    psth = np.sum(trials_arr, axis=0)
+    time = np.arange(trials_arr.shape[1])
+    ax[0].plot(time, psth, color=getattr(colors, area))
 
-    axes[0].set_ylabel(f"{area} units ($n={solData.shape[1]}$)")
+    if vline is not None:
+        ax[1].axvline(x=vline, linestyle="--", color="k")
 
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(im, cax=cax)
+    xticks = np.linspace(0, trials_arr.shape[1], 7)  # 6 ticks
+    ax[1].set_xticks(xticks)
+    ax[1].set_xticklabels([f"{x * Params.BIN_SIZE:.2f}" for x in xticks])
+    ax[1].set_xlabel("Time (ms)")
+
+    ax[1].set_xlabel("Time (s)")
+    ax[1].set_ylabel("Trial")
+    ax[0].set_title(f"Neuron id: {neuron_id}. KSLabel: {df[f"{area}_KSLabel"][0][neuron_id]}")
     plt.show()
-    return axes
+    return
+
+
+def plot_single_neuron_raster_and_psth_grid(
+    df, area, neuron_ids, cmap="copper_r", vmin=None, vmax=None, vline=None
+):
+
+    n = len(neuron_ids)
+    ncols = 3
+    nrows = math.ceil(n / ncols)
+
+    fig, axes = plt.subplots(
+        nrows * 2,
+        ncols,
+        figsize=(ncols * 5, nrows * 5),
+        sharex="col",
+        gridspec_kw={"hspace": 0.03},
+    )
+
+    if nrows == 1:
+        axes = np.array([axes])  # Ensure 2D indexing
+
+    for idx, neuron_id in enumerate(neuron_ids):
+        row = (idx // ncols) * 2
+        col = idx % ncols
+
+        try:
+            trials_arr = get_trial_x_time_per_neuron(df, area=area, neuron_id=neuron_id)
+
+            # PSTH
+            psth_ax = axes[row, col]
+            psth = np.sum(trials_arr, axis=0)
+            time = np.arange(trials_arr.shape[1])
+            psth_ax.plot(time, psth, color=getattr(colors, area))
+            psth_ax.set_title(
+                f"Neuron id: {neuron_id}. KSLabel: {df[f"{area}_KSLabel"][0][neuron_id]}"
+            )
+
+            psth_ax.set_xticks([])
+
+            # Heatmap
+            heatmap_ax = axes[row + 1, col]
+            im = heatmap_ax.imshow(
+                trials_arr,
+                aspect="auto",
+                interpolation="nearest",
+                cmap=cmap,
+                origin="upper",
+                vmin=vmin,
+                vmax=vmax,
+            )
+
+            if vline is not None:
+                heatmap_ax.axvline(x=vline, linestyle="--", color="k")
+
+            heatmap_ax.set_xlabel("Time (bins)")
+            heatmap_ax.set_ylabel("Trial")
+
+        except Exception as e:
+            print(f"Error plotting neuron {neuron_id}: {e}")
+
+    # Colour bar
+    cbar = fig.colorbar(im, ax=axes[:, -1], shrink=0.6)
+    cbar.set_label("Spike count")
+
+    plt.tight_layout()
+    plt.show()
+    return
 
 
 def plot_heatmap_raster(

@@ -1,0 +1,6 @@
+{
+    "autoDocstring.docstringFormat": "google",
+    "python.analysis.extraPaths": [
+        "./tools"
+    ] // options: "google", "numpy", "sphinx"
+}
