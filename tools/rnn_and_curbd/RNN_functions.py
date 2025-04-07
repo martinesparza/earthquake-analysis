@@ -19,7 +19,7 @@ def RNN(formated_rates, resets, regions_arr, data, mouse_num, graph = False, **k
         return rnn_model
 
 def PCA_and_CCA(concat_rates, rnn_model, num_components, trial_num, mouse_num, printing=True):
-    data_rnn = rnn_model['Adata'].T
+    data_rnn = rnn_model['RNN'].T
     data_real = rescale_array(concat_rates)
 
     # PCA
@@ -115,6 +115,22 @@ def get_reset_points(df, activity, areas, dtFactor, printing = False):
         reset_points.append(point)
 
     return reset_points, trial_len
+
+def get_reset_points_continuous(df, dtFactor, printing=False):
+    reset_points = []
+    cumulative_time = 0
+
+    for i in range(len(df)):
+        trial_len = df['trial_length'][i]
+        point = cumulative_time * dtFactor
+        reset_points.append(point)
+
+        if printing:
+            print(f"Trial {i}: length = {trial_len}, reset point = {point}")
+
+        cumulative_time += trial_len
+
+    return reset_points
 
 def get_regions(df, brain_areas):
     num_neurons = [df[col][1].shape[1] for col in brain_areas]
@@ -311,6 +327,38 @@ def plot_model_accuracy(model, mouse_num):
 
     return fig
 
+def plot_rnn_weight_matrix(rnn_model, regions):
+    matrix = rnn_model['J']
+    neuron_num = rnn_model['Adata'].shape[0]
+
+    # Extract boundaries dynamically
+    boundaries = [region[1][-1] for region in regions]
+
+    fig, ax = plt.subplots(figsize=[20, 12])
+    cax = ax.pcolormesh(range(neuron_num), range(neuron_num), matrix, cmap="viridis")
+    fig.colorbar(cax, label="Weight Strength")
+
+    # Plot region boundaries
+    for boundary in boundaries:
+        ax.axvline(x=boundary + 0.5, color='red', linestyle='--', linewidth=1)
+        ax.axhline(y=boundary + 0.5, color='red', linestyle='--', linewidth=1)
+
+    # Compute midpoints for labels
+    midpoints = [boundaries[0] / 2] + [(boundaries[i - 1] + boundaries[i]) / 2 for i in range(1, len(boundaries))]
+    region_labels = [region[0] for region in regions]
+
+    # Set axis labels dynamically
+    ax.set_xticks(midpoints)
+    ax.set_xticklabels(region_labels, fontsize=14)
+    ax.set_yticks(midpoints)
+    ax.set_yticklabels(region_labels, fontsize=14)
+
+    ax.set_title('RNN weight matrix', fontsize=16)
+    ax.set_xlabel('target neuron', fontsize=16)
+    ax.set_ylabel('source neuron', fontsize=16)
+
+    return fig
+
 def plot_3PCs(fig, real_data, rnn_data, subplot_num):
     ax1 = fig.add_subplot(subplot_num, projection='3d')
 
@@ -388,22 +436,25 @@ def plot_PCA_cum_var(pca_real, pca_rnn, mouse_num):
 
 def format_for_plotting(curbd_arr, curbd_labels, n_regions, reset_points):
     all_currents = []
-    for iTarget in range(n_regions):
-        for iSource in range(n_regions):
-            num_neurons = curbd_arr[iTarget, iSource].shape[0]
-            # set up space for data
-            new_row = [[] for _ in range(num_neurons)]
-        
-            # iterate over neurons
-            for neuron in range(num_neurons):
-                curr = curbd_arr[iTarget, iSource][neuron]
-                for p in range(len(reset_points)):
-                    point = reset_points[p]
-                    if point != 0:
-                        new_row[neuron].append(curr[reset_points[p-1]:point])
+    max_len = curbd_arr[0, 0].shape[1]
+    reset_points = [point for point in reset_points if point <= max_len]
 
-            new_row = np.array(new_row)
-            all_currents.append(new_row)
+    for iTarget in range(n_regions):
+            for iSource in range(n_regions):
+                num_neurons = curbd_arr[iTarget, iSource].shape[0]
+                # set up space for data
+                new_row = [[] for _ in range(num_neurons)]
+
+                # iterate over neurons
+                for neuron in range(num_neurons):
+                    curr = curbd_arr[iTarget, iSource][neuron]
+                    for p in range(len(reset_points)):
+                        point = reset_points[p]
+                        if point != 0:
+                            new_row[neuron].append(curr[reset_points[p-1]:point])
+
+                # new_row = np.array(new_row)
+                all_currents.append(new_row)
 
     all_currents_labels = curbd_labels.flatten()
     return all_currents, all_currents_labels
@@ -494,6 +545,7 @@ def plot_all_currents_seperate(all_currents, all_currents_labels, perturbation_t
           
     for i in range(len(all_currents)):
         current_data = all_currents[i]
+
         current_label = all_currents_labels[i]
         axn = fig.add_subplot(int(n_regions/2), int(n_regions/2), count)
         count += 1
@@ -504,7 +556,7 @@ def plot_all_currents_seperate(all_currents, all_currents_labels, perturbation_t
         sem_current = np.std(current_data, axis=(0, 1)) / np.sqrt(current_data.shape[0] * current_data.shape[1])
         if plot_single:
             mean_neurons = np.mean(current_data, axis=0)
-            for j in range(0, mean_neurons.shape[0], 5):
+            for j in range(0, mean_neurons.shape[0], 1):
                 axn.plot(time_axis, mean_neurons[j].T, linewidth=0.5, color='lightblue', alpha=0.5)
 
         axn.plot(time_axis, mean_current, linewidth=2, color=colours[i])
@@ -522,3 +574,59 @@ def plot_all_currents_seperate(all_currents, all_currents_labels, perturbation_t
     fig.show()
 
     return fig
+
+
+def plot_inter_trial_currents(all_currents, all_currents_labels, bin_size, dtFactor, mouse_num,
+                               plot_single=True):
+    n_regions = len(all_currents)
+    max_time_length = max(len(trial) for region in all_currents for neuron in region for trial in neuron)
+
+    padded_all_currents = []
+    for region in all_currents:
+        padded_region = []
+        for neuron in region:
+            padded_neuron = []
+            for trial in neuron:
+                padded_trial = np.pad(trial, (0, max_time_length - len(trial)), constant_values=np.nan)
+                padded_neuron.append(padded_trial)
+            padded_region.append(padded_neuron)
+        padded_all_currents.append(np.array(padded_region))
+
+    fig = pylab.figure(figsize=[12, 8])
+    count = 1
+    colours = ['C3', 'C2', 'C1', 'C0']
+
+    # Loop over each region in all_currents
+    for i in range(n_regions):
+        current_data = np.array(padded_all_currents[i])
+        current_label = all_currents_labels[i]
+
+        # Generate time_axis based on max_time_length
+        time_axis = np.linspace(0, max_time_length * bin_size / dtFactor, max_time_length)
+
+        axn = fig.add_subplot(int(n_regions / 2), int(n_regions / 2), count)
+        count += 1
+
+        # Calculate the overall mean (over neurons and trials) manually
+        mean_current = np.nanmean(current_data, axis=(0, 1))  # Mean over neurons and trials
+        sem_current = np.nanstd(current_data, axis=(0, 1)) / np.sqrt(
+            np.sum(~np.isnan(current_data), axis=(0, 1)))  # SEM ignoring NaNs
+
+        axn.plot(time_axis, mean_current, linewidth=2, color=colours[i])
+        axn.fill_between(time_axis, mean_current - sem_current, mean_current + sem_current, alpha=0.3, color=colours[i])
+
+        if plot_single:
+            mean_neurons = np.mean(current_data, axis=0)
+            for j in range(0, mean_neurons.shape[0], 1):
+                axn.plot(time_axis, mean_neurons[j].T, linewidth=0.5, color='lightblue', alpha=0.5)
+
+        axn.set_title(f'{current_label} mean current')
+        axn.set_xlabel('Time (s)')
+        axn.set_ylabel('Current Strength')
+
+    fig.suptitle(f'Average current across all trials - mouse {mouse_num}', fontsize='xx-large')
+    fig.tight_layout(rect=[0, 0, 1, 0.98])
+    fig.show()
+
+    return fig
+
