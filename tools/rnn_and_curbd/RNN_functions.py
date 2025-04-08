@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pyaldata
 import pylab
+import math
 import os
 import csv
 from sklearn.decomposition import PCA
@@ -18,9 +19,10 @@ def RNN(formated_rates, resets, regions_arr, data, mouse_num, graph = False, **k
     else:
         return rnn_model
 
-def PCA_and_CCA(concat_rates, rnn_model, num_components, trial_num, mouse_num, printing=True):
+def PCA_and_CCA(rnn_model, trial_num, mouse_num, printing=True):
     data_rnn = rnn_model['RNN'].T
-    data_real = rescale_array(concat_rates)
+    data_real = rnn_model['Adata'].T
+    num_components = data_rnn.shape[1] - 1
 
     # PCA
     pca_real, pca_data_real = PCA_fit_transform(data_real, num_components)
@@ -356,6 +358,7 @@ def plot_rnn_weight_matrix(rnn_model, regions):
     ax.set_title('RNN weight matrix', fontsize=16)
     ax.set_xlabel('target neuron', fontsize=16)
     ax.set_ylabel('source neuron', fontsize=16)
+    plt.show()
 
     return fig
 
@@ -537,7 +540,7 @@ def plot_all_currents(all_currents, all_currents_labels, perturbation_time, bin_
 
     return fig
 
-def plot_all_currents_seperate(all_currents, all_currents_labels, perturbation_time, bin_size, dtFactor, mouse_num, plot_single=True):
+def plot_all_currents_separate(all_currents, all_currents_labels, perturbation_time, bin_size, dtFactor, mouse_num, plot_single=True):
     fig = pylab.figure(figsize=[12, 8])
     count = 1
     n_regions = len(all_currents)
@@ -571,10 +574,9 @@ def plot_all_currents_seperate(all_currents, all_currents_labels, perturbation_t
 
     fig.suptitle(f'Average current across all trials- mouse {mouse_num}', fontsize='xx-large')
     fig.tight_layout(rect=[0, 0, 1, 0.98])
-    fig.show()
+    plt.show()
 
     return fig
-
 
 def plot_inter_trial_currents(all_currents, all_currents_labels, bin_size, dtFactor, mouse_num,
                                plot_single=True):
@@ -626,7 +628,61 @@ def plot_inter_trial_currents(all_currents, all_currents_labels, bin_size, dtFac
 
     fig.suptitle(f'Average current across all trials - mouse {mouse_num}', fontsize='xx-large')
     fig.tight_layout(rect=[0, 0, 1, 0.98])
-    fig.show()
+    plt.show()
 
     return fig
 
+def PCA_of_currents(all_currents, all_currents_labels, perturbation_time, mouse_num):
+    fig = pylab.figure(figsize=(16, 16))
+    count = 1
+    n_regions = int(math.sqrt(len(all_currents)))
+    colours = ['C0', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']
+
+    for i in range(len(all_currents)):
+        current_data = np.array(all_currents[i])
+        current_label = all_currents_labels[i]
+        colour = colours[i % len(colours)]
+
+        axn = fig.add_subplot(n_regions, n_regions, count, projection='3d')
+        count += 1
+
+        mean_current = np.mean(current_data, axis=1).T # keep neuron dimension, but mean across trials
+
+        pca = PCA(n_components=min(mean_current.shape[0], mean_current.shape[1]))
+        pca_current = pca.fit_transform(mean_current)
+
+        axn.plot(pca_current[:, 0],
+                 pca_current[:, 1],
+                 pca_current[:, 2], color=colour)
+        axn.scatter(
+            pca_current[perturbation_time, 0],
+            pca_current[perturbation_time, 1],
+            pca_current[perturbation_time, 2],
+            color='red',
+            s=50,
+            marker='o'
+        )
+        axn.scatter(
+            pca_current[0, 0],
+            pca_current[0, 1],
+            pca_current[0, 2],
+            color='black',
+            s=60,
+            marker='x'
+        )
+
+        axn.xaxis.pane.fill = False
+        axn.yaxis.pane.fill = False
+        axn.zaxis.pane.fill = False
+        axn.set_title(f'{current_label} mean current', fontsize='x-large')
+        axn.set_xlabel('PC1')
+        axn.set_ylabel('PC2')
+        axn.set_zlabel('PC3')
+        axn.grid(False)
+        # axn.legend(loc='upper left')
+
+    fig.suptitle(f'Average current across all trials- mouse {mouse_num}', fontsize='xx-large')
+    fig.tight_layout()
+    fig.show()
+
+    return fig
