@@ -445,10 +445,8 @@ def format_for_plotting(curbd_arr, curbd_labels, n_regions, reset_points):
     for iTarget in range(n_regions):
             for iSource in range(n_regions):
                 num_neurons = curbd_arr[iTarget, iSource].shape[0]
-                # set up space for data
                 new_row = [[] for _ in range(num_neurons)]
 
-                # iterate over neurons
                 for neuron in range(num_neurons):
                     curr = curbd_arr[iTarget, iSource][neuron]
                     for p in range(len(reset_points)):
@@ -456,7 +454,6 @@ def format_for_plotting(curbd_arr, curbd_labels, n_regions, reset_points):
                         if point != 0:
                             new_row[neuron].append(curr[reset_points[p-1]:point])
 
-                # new_row = np.array(new_row)
                 all_currents.append(new_row)
 
     all_currents_labels = curbd_labels.flatten()
@@ -686,3 +683,78 @@ def PCA_of_currents(all_currents, all_currents_labels, perturbation_time, mouse_
     fig.show()
 
     return fig
+
+def PCA_by_region(data, regions):
+    num_regions = len(regions)
+    PCA_data = []
+    pcas = []
+    for r in range(num_regions):
+        # select region data
+        neurons = len(regions[r][1])
+        first_idx = regions[r][1][0]
+        last_idx = regions[r][1][-1]
+        region_data = data[:, first_idx:last_idx, ]
+        # PCA and save
+        pca = PCA(n_components=neurons - 1)
+        PCA_data.append(pca.fit_transform(region_data))
+        pcas.append(pca)
+
+    return PCA_data, pcas
+
+def plot_PCs_by_region(real_data, rnn_data, reset_points, regions, trial_len, mouse_num):
+    num_plots = len(regions)
+    labels = regions[:, 0]
+    re_real_data = []
+    re_rnn_data = []
+    for r in range(len(regions)):
+        all_data, trial_data, _ = extract_trials(real_data[r].T, reset_points, trial_len)
+        all_rnn, trial_rnn, _ = extract_trials(rnn_data[r].T, reset_points, trial_len)
+        re_real = np.array(trial_data)
+        re_rnn = np.array(trial_rnn)
+        mean_real = np.mean(re_real, axis=1)
+        mean_rnn = np.mean(re_rnn, axis=1)
+        re_real_data.append(mean_real)
+        re_rnn_data.append(mean_rnn)
+
+    fig = plt.figure(figsize=(16, 6))
+    for r in range(num_plots):
+        axn = fig.add_subplot(1, num_plots, r + 1)
+        axn.plot(re_real_data[r][0, :], re_real_data[r][1, :], label='experimental data', linewidth=3)
+        axn.plot(re_rnn_data[r][0, :], re_rnn_data[r][1, :], label='RNN model data', linestyle='--', linewidth=5)
+        axn.set_xlabel('PC1')
+        axn.set_ylabel('PC2')
+        axn.legend(fontsize=10)
+        axn.set_title(f"{labels[r]} activity", fontsize=12)
+    fig.suptitle(f"PCA of Model vs Experimental extracted trial data - mouse {mouse_num}", fontsize=16)
+    fig.tight_layout()
+    return fig
+
+def extract_trials(data, reset_points, trial_len):
+    max_len = data.shape[1]
+    reset_points = [point for point in reset_points if point <= max_len]
+    num_neurons = data.shape[0]
+    all_data = [[] for _ in range(num_neurons)]
+
+    # split for each segment
+    for neuron in range(num_neurons):
+        arr = data[neuron]
+        for p in range(len(reset_points)):
+            point = reset_points[p]
+            if point != 0:
+                all_data[neuron].append(arr[reset_points[p-1]:point])
+
+    # split for trials and inter-trials
+    trial_arr = []
+    inter_trial_arr = []
+    for neuron in all_data:
+        neuron_trial = []
+        neuron_inter = []
+        for trial in neuron:
+            if len(trial) == trial_len:
+                neuron_trial.append(trial)
+            else:
+                neuron_inter.append(trial)
+        trial_arr.append(np.array(neuron_trial))
+        inter_trial_arr.append(neuron_inter)
+    trial_arr = np.array(trial_arr)
+    return all_data, trial_arr, inter_trial_arr
