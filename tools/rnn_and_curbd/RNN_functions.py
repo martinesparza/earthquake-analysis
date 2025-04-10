@@ -166,6 +166,31 @@ def train_RNN(activity, reset_points, regions, bin_size, **kwargs):
     )
     return model
 
+def combine_rnn_time_bins(rnn_model):
+    rnn_output = rnn_model['RNN']
+    dtData = rnn_model['dtData']
+    tData = rnn_model['tData']
+    tRNN = rnn_model['tRNN']
+
+    # Set up array
+    rnn_combine = np.zeros((rnn_output.shape[0], len(tData)))
+
+    # For each time bin in tData, find corresponding RNN indices and average
+    for i in range(len(tData)):
+        t_start = tData[i]
+        t_end = tData[i] + dtData
+        idx = np.where((tRNN >= t_start) & (tRNN < t_end))[0]
+
+        if len(idx) > 0:
+            rnn_combine_bin = rnn_output[:, idx].mean(axis=1)
+        else:
+            rnn_combine_bin = np.zeros(rnn_output.shape[0])
+
+        rnn_combine[:, i] = rnn_combine_bin
+    print(
+        f"RNN model output transformed from shape: {rnn_output.shape} to {rnn_combine.shape}. Matching the original data shape of {rnn_model['Adata'].shape}")
+    return rnn_combine
+
 def rescale_array(arr):
     """
     Rescales a NumPy array to the range [0, 1].
@@ -336,7 +361,7 @@ def plot_rnn_weight_matrix(rnn_model, regions):
     # Extract boundaries dynamically
     boundaries = [region[1][-1] for region in regions]
 
-    fig, ax = plt.subplots(figsize=[20, 12])
+    fig, ax = plt.subplots(figsize=[10, 6])
     cax = ax.pcolormesh(range(neuron_num), range(neuron_num), matrix, cmap="viridis")
     fig.colorbar(cax, label="Weight Strength")
 
@@ -351,13 +376,13 @@ def plot_rnn_weight_matrix(rnn_model, regions):
 
     # Set axis labels dynamically
     ax.set_xticks(midpoints)
-    ax.set_xticklabels(region_labels, fontsize=14)
+    ax.set_xticklabels(region_labels, fontsize='xx-large')
     ax.set_yticks(midpoints)
-    ax.set_yticklabels(region_labels, fontsize=14)
+    ax.set_yticklabels(region_labels, fontsize='xx-large')
 
-    ax.set_title('RNN weight matrix', fontsize=16)
-    ax.set_xlabel('target neuron', fontsize=16)
-    ax.set_ylabel('source neuron', fontsize=16)
+    ax.set_title('RNN weight matrix', fontsize='xx-large')
+    ax.set_xlabel('target neuron', fontsize='xx-large')
+    ax.set_ylabel('source neuron', fontsize='xx-large')
     plt.show()
 
     return fig
