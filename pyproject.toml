@@ -16,6 +16,8 @@ xarray = "^2024.11.0"
 spikeinterface = "^0.101.2"
 scikit-learn = "^1.6.1"
 pyaldata = { git = "git@github.com:BeNeuroLab/PyalData.git", develop = true }
+statsmodels = "^0.14.4"
+cupy-cuda12x = "^13.4.1"
 
 
 [build-system]

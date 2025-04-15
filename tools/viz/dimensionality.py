@@ -133,6 +133,7 @@ def plot_participation_ratio_per_session(
         results[area]["free"].append(pca_pr(free_data))
 
         trial_data = pyal.concat_trials(df_trials, f"{area}_rates")
+        print(trial_data.shape)
         results[area]["trial"].append(pca_pr(trial_data))
 
         intertrial_data = pyal.concat_trials(df_intertrials, f"{area}_rates")

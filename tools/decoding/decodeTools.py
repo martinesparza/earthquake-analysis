@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pyaldata as pyal
@@ -12,6 +14,22 @@ from tools import dataTools as dt
 from tools import params
 from tools.params import Params
 from tools.viz import utilityTools as utility
+
+
+def columnwise_r2(Y_true: np.ndarray, Y_pred: np.ndarray) -> np.ndarray:
+    ss_res = np.sum((Y_true - Y_pred) ** 2, axis=0)
+    ss_tot = np.sum((Y_true - Y_true.mean(axis=0)) ** 2, axis=0)
+    r2 = 1 - ss_res / ss_tot
+    return r2
+
+
+def multivariate_r2(Y_true: np.ndarray, Y_pred: np.ndarray) -> Tuple[float, np.ndarray]:
+    ss_res = np.linalg.norm(Y_true - Y_pred, ord="fro") ** 2
+    ss_tot = np.linalg.norm(Y_true - Y_true.mean(axis=0), ord="fro") ** 2
+    multi_r2 = 1 - ss_res / ss_tot
+
+    col_r2 = columnwise_r2(Y_true, Y_pred)
+    return multi_r2, col_r2
 
 
 def within_decoding(
@@ -128,7 +146,7 @@ def plot_decoding_over_time(
     max_time=2,
     trial_conditions=[],
 ):
-    """ 
+    """
     Increasing window not moving window!
     """
     if isinstance(areas, str):
@@ -187,11 +205,23 @@ def plot_decoding_over_time(
     ax.legend()
 
 
-
-def plot_decoding_moving_window(ax, category, df_list, areas, n_components, model, idx_event="idx_sol_on", min_time=-0.5, max_time=1.5, window_length=0.1, step=0.03, trial_conditions=[]):
-    '''
+def plot_decoding_moving_window(
+    ax,
+    category,
+    df_list,
+    areas,
+    n_components,
+    model,
+    idx_event="idx_sol_on",
+    min_time=-0.5,
+    max_time=1.5,
+    window_length=0.1,
+    step=0.03,
+    trial_conditions=[],
+):
+    """
     PCA model obtained on all the trials concatenated, not restricted to the moving window.
-    '''
+    """
 
     if isinstance(areas, str):
         areas = [areas]
@@ -202,31 +232,32 @@ def plot_decoding_moving_window(ax, category, df_list, areas, n_components, mode
         units_per_area = None
 
     within_results_per_area = []
-    
-  
-    bin_size = Params.BIN_SIZE  
+
+    bin_size = Params.BIN_SIZE
     min_timebin = int(min_time / bin_size)
     max_timebin = int(max_time / bin_size)
     window_size_bins = int(window_length / bin_size)
     step_size_bins = int(step / bin_size)
 
     time_points = np.arange(min_timebin, max_timebin - window_size_bins, step_size_bins)
-    
+
     model_full = PCA(n_components=n_components, svd_solver="full")
-    
+
     for i, area in enumerate(areas):
-        for j,df in enumerate(df_list):
+        for j, df in enumerate(df_list):
             rates = np.concatenate(df[f"{area}_rates"].values, axis=0)
             rates_model = model_full.fit(rates)
-            df_list[j] = pyal.apply_dim_reduce_model(df, rates_model, f"{area}_rates", f"{area}_pca")
-        
+            df_list[j] = pyal.apply_dim_reduce_model(
+                df, rates_model, f"{area}_rates", f"{area}_pca"
+            )
+
         within_results_over_time = []
 
         for start_bin in time_points:
             perturb_epoch = pyal.generate_epoch_fun(
                 start_point_name=idx_event,
                 rel_start=start_bin,
-                rel_end=start_bin + window_size_bins
+                rel_end=start_bin + window_size_bins,
             )
 
             if units_per_area is not None:
@@ -236,15 +267,20 @@ def plot_decoding_moving_window(ax, category, df_list, areas, n_components, mode
                 units = None
 
             within_results = within_decoding(
-                cat=category, allDFs=df_list, area=area, units=units,
-                n_components=n_components, epoch=perturb_epoch,
-                model=model, trial_conditions=trial_conditions
+                cat=category,
+                allDFs=df_list,
+                area=area,
+                units=units,
+                n_components=n_components,
+                epoch=perturb_epoch,
+                model=model,
+                trial_conditions=trial_conditions,
             )
             within_results_over_time.append([result for result in within_results.values()])
 
         within_results_per_area.append(np.array(within_results_over_time))
 
-    time_axis = ((time_points + window_size_bins) * bin_size) * 1000  #  
+    time_axis = ((time_points + window_size_bins) * bin_size) * 1000  #
 
     for i, area in enumerate(areas):
         utility.shaded_errorbar(
@@ -260,37 +296,50 @@ def plot_decoding_moving_window(ax, category, df_list, areas, n_components, mode
     ax.set_xlabel("Time relative to event (ms)")
     ax.set_ylabel("Decoding Accuracy (%)")
     ax.set_title(f"Decoding Accuracy of {category} ({window_length*1000} ms)")
-    ax.axvline(x=0, color="k", linestyle="--", label=f"Event: {idx_event}")  # Mark event 
+    ax.axvline(x=0, color="k", linestyle="--", label=f"Event: {idx_event}")  # Mark event
     ax.axhline(y=chance_level, color="red", linestyle="--", label="Chance level")
     ax.legend()
-    
 
-def plot_decoding_moving_window_per_component(ax, category, df_list, area = "M1", max_components = 20, model = "pca", 
-                                              idx_event="idx_sol_on", min_time=-0.5, max_time=1.5, 
-                                              window_length=0.1, step=0.03, trial_conditions=[]):
+
+def plot_decoding_moving_window_per_component(
+    ax,
+    category,
+    df_list,
+    area="M1",
+    max_components=20,
+    model="pca",
+    idx_event="idx_sol_on",
+    min_time=-0.5,
+    max_time=1.5,
+    window_length=0.1,
+    step=0.03,
+    trial_conditions=[],
+):
     if isinstance(area, dict):
         units_per_area = list(area.values())
         area = list(area.keys()[0])
     else:
         units_per_area = None
 
-    bin_size = Params.BIN_SIZE  
+    bin_size = Params.BIN_SIZE
     min_timebin = int(min_time / bin_size)
     max_timebin = int(max_time / bin_size)
     window_size_bins = int(window_length / bin_size)
     step_size_bins = int(step / bin_size)
 
     time_points = np.arange(min_timebin, max_timebin - window_size_bins, step_size_bins)
-    
+
     results_matrix = np.zeros((max_components, len(time_points)))
 
-    for n_components in range(1,max_components+1):
+    for n_components in range(1, max_components + 1):
         model_full = PCA(n_components=n_components, svd_solver="full")
 
         for j, df in enumerate(df_list):
             rates = np.concatenate(df[f"{area}_rates"].values, axis=0)
             rates_model = model_full.fit(rates)
-            df_list[j] = pyal.apply_dim_reduce_model(df, rates_model, f"{area}_rates", f"{area}_pca")
+            df_list[j] = pyal.apply_dim_reduce_model(
+                df, rates_model, f"{area}_rates", f"{area}_pca"
+            )
 
         within_results_over_time = []
 
@@ -298,7 +347,7 @@ def plot_decoding_moving_window_per_component(ax, category, df_list, area = "M1"
             perturb_epoch = pyal.generate_epoch_fun(
                 start_point_name=idx_event,
                 rel_start=start_bin,
-                rel_end=start_bin + window_size_bins
+                rel_end=start_bin + window_size_bins,
             )
 
             if units_per_area is not None:
@@ -308,25 +357,40 @@ def plot_decoding_moving_window_per_component(ax, category, df_list, area = "M1"
                 units = None
 
             within_results = within_decoding(
-                cat=category, allDFs=df_list, area=area, units=units,
-                n_components=n_components, epoch=perturb_epoch,
-                model=model, trial_conditions=trial_conditions
+                cat=category,
+                allDFs=df_list,
+                area=area,
+                units=units,
+                n_components=n_components,
+                epoch=perturb_epoch,
+                model=model,
+                trial_conditions=trial_conditions,
             )
-            
-            # Store the mean accuracy over time
-            results_matrix[n_components-1, i] = np.mean(list(within_results.values()))
 
-    time_axis = ((time_points + window_size_bins) * bin_size) * 1000  # Convert to milliseconds
+            # Store the mean accuracy over time
+            results_matrix[n_components - 1, i] = np.mean(list(within_results.values()))
+
+    time_axis = (
+        (time_points + window_size_bins) * bin_size
+    ) * 1000  # Convert to milliseconds
     chance_level = 1 / len(np.unique(df_list[0][category]))
     # Plot heatmap
     zero_index = np.argmin(np.abs(time_axis))
     ax.axvline(x=zero_index, color="red", linestyle="--", linewidth=2, label=idx_event)
-    sns.heatmap(results_matrix, ax=ax, cmap="viridis", vmin=chance_level, vmax=0.5, cbar=True,
-                xticklabels=np.round(time_axis, 2), yticklabels=np.arange(1,max_components+1))
-    
-    # tick_positions = np.arange(np.min(time_axis), np.max(time_axis) + 1, 100) 
+    sns.heatmap(
+        results_matrix,
+        ax=ax,
+        cmap="viridis",
+        vmin=chance_level,
+        vmax=0.5,
+        cbar=True,
+        xticklabels=np.round(time_axis, 2),
+        yticklabels=np.arange(1, max_components + 1),
+    )
+
+    # tick_positions = np.arange(np.min(time_axis), np.max(time_axis) + 1, 100)
     # ax.set_xticks(tick_positions)
-    # ax.set_xticklabels([f"{int(t)}" for t in tick_positions]) 
+    # ax.set_xticklabels([f"{int(t)}" for t in tick_positions])
     ax.set_xlabel("Time (ms)")
     ax.set_ylabel("Number of PCs")
     ax.set_title(f"Decoding Performance Over Time ({area})")
