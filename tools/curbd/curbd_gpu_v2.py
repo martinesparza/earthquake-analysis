@@ -40,13 +40,15 @@ class gCURBD:
 
     def setup_ou_process(self):
         amp_ou = cp.sqrt(self.tau_ou / self.dt_rnn)  # Amplitude of the white noise
-        eta = amp_ou * cp.random.randn(self.n_units, len(self.t_rnn))
-        self.ou_input = cp.ones((self.n_units, len(self.t_rnn)))  # Initial OU variable
+        eta = amp_ou * cp.random.randn(self.n_trials, self.n_units, len(self.t_rnn))
+        self.ou_input = cp.ones(
+            (self.n_trials, self.n_units, len(self.t_rnn))
+        )  # Initial OU variable
 
         # Combine close form solution and stochastic approximation
         for tt in range(1, len(self.t_rnn)):
-            self.ou_input[:, tt] = eta[:, tt] + (
-                self.ou_input[:, tt - 1] - eta[:, tt]
+            self.ou_input[:, :, tt] = eta[:, :, tt] + (
+                self.ou_input[:, :, tt - 1] - eta[:, :, tt]
             ) * cp.exp(-(self.dt_rnn / self.tau_ou))
         self.ou_input = self.amp_ou * self.ou_input  # Scale input h(t)
         return
@@ -58,7 +60,7 @@ class gCURBD:
         a = cp.asarray(a)
 
         # Definitions
-        self.n_units, time = a.shape
+        self.n_trials, self.n_units, time = a.shape
 
         self.dt_rnn = self.dt_data / self.dt_factor
         self.t_data = self.dt_data * cp.arange(time)
@@ -80,7 +82,7 @@ class gCURBD:
         self.a_ = cp.maximum(self.a_, -0.999)  # Shape: N x t_data
 
         # initialize some others
-        self.rnn = cp.zeros((self.n_units, len(self.t_rnn)))
+        self.rnn = cp.zeros((self.n_trials, self.n_units, len(self.t_rnn)))
 
         # initialize learning update matrix (see Sussillo and Abbot, 2009)
         self.pj = self.p0 * cp.eye(self.n_units)
@@ -93,8 +95,8 @@ class gCURBD:
         for epoch in range(self.train_epochs):
 
             # Assign activity to model activity
-            h = self.a_[:, 0]
-            self.rnn[:, 0] = self.non_linear_func(h)
+            h = self.a_[:, :, 0, cp.newaxis]
+            self.rnn[:, :, 0, cp.newaxis] = self.non_linear_func(h)
 
             # variables to track when to update the J matrix
             t_learn = 0  # time at which J update happens
@@ -107,27 +109,33 @@ class gCURBD:
                 t_learn += self.dt_rnn
 
                 # Update RNN Eq. 4 in the paper
-                self.rnn[:, tt] = self.non_linear_func(h)
+                self.rnn[:, :, tt, cp.newaxis] = self.non_linear_func(h)
                 h = (
                     h
                     + self.dt_rnn
-                    * (-h + cp.dot(self.j, self.rnn[:, tt]) + self.ou_input[:, tt])
+                    * (
+                        -h
+                        + self.j @ self.rnn[:, :, tt, cp.newaxis]
+                        + self.ou_input[:, :, tt, cp.newaxis]
+                    )
                     / self.tau_rnn
                 )
 
                 # Update J
                 if t_learn >= self.dt_data:
                     t_learn = 0
-                    err = self.rnn[:, tt] - self.a_[:, idx_learn]
+                    err = cp.expand_dims(
+                        self.rnn[:, :, tt] - self.a_[:, :, idx_learn], axis=-1
+                    )
                     idx_learn = idx_learn + 1
 
                     # update chi2 using this errord
                     chi2 += cp.mean(err**2)
 
                     # compute delta_j
-                    k = cp.dot(self.pj, self.rnn[:, tt])
+                    k = self.pj @ self.rnn[:, :, tt, cp.newaxis]  # normally size Nx1
 
-                    c = 1.0 / (1.0 + cp.dot(self.rnn[:, tt], k))
+                    c = 1.0 / (1.0 + cp.dot(self.rnn[:, :, tt], cp.squeeze(k))[0])  # A scalar
 
                     # update PJ.
                     self.pj = self.pj - c * cp.outer(k, k)
@@ -138,7 +146,7 @@ class gCURBD:
 
             # compute metrics
             time_values_to_compare = cp.arange(0, len(self.t_rnn), self.dt_factor)
-            ss_res = cp.linalg.norm((self.a_ - self.rnn[:, time_values_to_compare]))
+            ss_res = cp.linalg.norm((self.a_ - self.rnn[:, :, time_values_to_compare]))
             ss_tot = cp.sqrt(self.n_units * len(self.t_data)) * cp.std(self.a_)
             pVar = 1 - (ss_res / ss_tot) ** 2
 
