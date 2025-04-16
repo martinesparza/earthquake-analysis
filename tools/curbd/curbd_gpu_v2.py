@@ -134,14 +134,25 @@ class gCURBD:
 
                     # compute delta_j
                     k = self.pj @ self.rnn[:, :, tt, cp.newaxis]  # normally size Nx1
+                    rPr = (
+                        self.rnn[:, :, tt]
+                        @ (cp.squeeze(self.pj @ self.rnn[:, :, tt, cp.newaxis])).T
+                    )
 
-                    c = 1.0 / (1.0 + cp.dot(self.rnn[:, :, tt], cp.squeeze(k))[0])  # A scalar
+                    if rPr.ndim > 1:
+                        rPr = cp.trace(rPr) / self.n_trials
+                    else:
+                        rPr = rPr[0]
 
-                    # update PJ.
-                    self.pj = self.pj - c * cp.outer(k, k)
+                    c = 1.0 / (1.0 + rPr)  # A scalar
+
+                    # update PJ --> This is the critical part !!!!
+                    # self.pj = self.pj - c * cp.outer(k, k)
+                    self.pj = self.pj - c * cp.mean(k @ k.transpose(0, 2, 1), axis=0)
 
                     # update J
-                    delta_J = c * cp.outer(err, k)
+                    # delta_J = c * cp.outer(err, k)
+                    delta_J = c * cp.mean(err @ k.transpose(0, 2, 1), axis=0)
                     self.j = self.j - delta_J
 
             # compute metrics
