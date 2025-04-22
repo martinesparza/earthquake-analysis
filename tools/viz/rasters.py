@@ -10,7 +10,9 @@ from tools.dataTools import get_trial_x_time_per_neuron
 from tools.params import Params, colors
 
 
-def plot_single_neuron_raster_and_psth(df, area, neuron_id, vmin=None, vmax=None, vline=None):
+def plot_single_neuron_raster_and_psth(
+    df, area, neuron_id, vmin=None, vmax=None, vline=None, figsize=None, ax=None, show=True
+):
     """Plots psth and raster of a single neuron for every trial
 
     Args:
@@ -24,10 +26,22 @@ def plot_single_neuron_raster_and_psth(df, area, neuron_id, vmin=None, vmax=None
     """
 
     trials_arr = get_trial_x_time_per_neuron(df, area=area, neuron_id=neuron_id)
-    fig, ax = plt.subplots(
-        2, 1, figsize=(5, 5), sharex="all", height_ratios=[1, 4], gridspec_kw={"hspace": 0.05}
-    )
-    print(area)
+    n_trials, n_time_bins = trials_arr.shape
+    total_spikes = np.sum(trials_arr)
+    trial_duration_sec = n_time_bins * Params.BIN_SIZE
+    print(total_spikes)
+    avg_firing_rate = total_spikes / (n_trials * trial_duration_sec)  # in Hz
+
+    print(f"Average firing rate: {avg_firing_rate:.2f} Hz")
+    if ax is None:
+        fig, ax = plt.subplots(
+            2,
+            1,
+            figsize=figsize,
+            sharex="all",
+            height_ratios=[1, 4],
+            gridspec_kw={"hspace": 0.05},
+        )
     im = ax[1].imshow(
         trials_arr,
         aspect="auto",
@@ -40,7 +54,8 @@ def plot_single_neuron_raster_and_psth(df, area, neuron_id, vmin=None, vmax=None
 
     psth = np.sum(trials_arr, axis=0)
     time = np.arange(trials_arr.shape[1])
-    ax[0].plot(time, psth, color=getattr(colors, area))
+    ax[0].plot(time, psth, color="k")
+    ax[0].fill_between(time, psth, color=getattr(colors, area), alpha=0.6)
 
     if vline is not None:
         ax[1].axvline(x=vline, linestyle="--", color="k")
@@ -52,9 +67,10 @@ def plot_single_neuron_raster_and_psth(df, area, neuron_id, vmin=None, vmax=None
 
     ax[1].set_xlabel("Time (s)")
     ax[1].set_ylabel("Trial")
-    ax[0].set_title(f"Neuron id: {neuron_id}. KSLabel: {df[f"{area}_KSLabel"][0][neuron_id]}")
-    plt.show()
-    return
+    # ax[0].set_title(f"Neuron id: {neuron_id}. KSLabel: {df[f"{area}_KSLabel"][0][neuron_id]}")
+    if show:
+        plt.show()
+    return ax
 
 
 def plot_single_neuron_raster_and_psth_grid(
@@ -147,7 +163,6 @@ def plot_heatmap_raster(
     """
     rates = np.concatenate(df[f"{area}_rates"].values, axis=0).T
     trial_length = df[f"{area}_rates"].values[0].shape[0]
-    print(trial_length)
 
     if ax is None:
         fig, ax = plt.subplots(sharex="all", figsize=(15, 5))

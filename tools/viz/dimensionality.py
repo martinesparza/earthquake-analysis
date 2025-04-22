@@ -11,6 +11,19 @@ from tools.dimensionality.participation import pca_pr
 from tools.viz import utilityTools as utility
 
 
+def get_pr_for_subsets_of_neurons(arr, niter=5):
+    results = []
+    for num_neurons in np.arange(5, arr.shape[1] + 1, 10):
+        prs = []
+        for _ in range(niter):
+            random_neurons = np.random.randint(0, arr.shape[1], size=num_neurons)
+            pr = pca_pr(arr[:, random_neurons])
+            prs.append(pr)
+
+        results.append(prs)
+    return np.vstack(results)
+
+
 def plot_VAF(
     ax,
     data_list: list[pd.DataFrame],
@@ -111,9 +124,11 @@ def plot_pairwise_corr(ax, df, areas, epoch, show=True):
 
 
 def plot_participation_ratio_per_session(
-    df, areas, epoch=None, trial_query=None, title=None, ax=None
+    df, areas=None, epoch=None, trial_query=None, title=None, ax=None, plot=True
 ):
-    results = {area: {"free": [], "inter": [], "trial": [], "free1": []} for area in areas}
+    if areas is None:
+        areas = [col[:-6] for col in df.columns if col.endswith("rates")]
+    results = {area: {"free": [], "inter": [], "trial": []} for area in areas}
 
     df_trials = pyal.select_trials(df, df.trial_name == "trial")
     df_intertrials = pyal.select_trials(df, df.trial_name == "intertrial")
@@ -133,37 +148,39 @@ def plot_participation_ratio_per_session(
         results[area]["free"].append(pca_pr(free_data))
 
         trial_data = pyal.concat_trials(df_trials, f"{area}_rates")
-        print(trial_data.shape)
         results[area]["trial"].append(pca_pr(trial_data))
 
         intertrial_data = pyal.concat_trials(df_intertrials, f"{area}_rates")
         results[area]["inter"].append(pca_pr(intertrial_data))
+    if plot:
+        if ax is None:
+            fig, ax = plt.subplots(1, len(areas), sharey=True)
 
-    if ax is None:
-        fig, ax = plt.subplots(1, len(areas), sharey=True)
+        for i, area in enumerate(areas):
+            data = pd.DataFrame(
+                {
+                    "PR": results[area]["free"]
+                    + results[area]["inter"]
+                    + results[area]["trial"],
+                    "Condition": ["free"] * len(results[area]["free"])
+                    + ["inter"] * len(results[area]["inter"])
+                    + ["trial"] * len(results[area]["trial"]),
+                }
+            )
+            sns.stripplot(
+                data=data,
+                x="Condition",
+                y="PR",
+                s=8,
+                color=getattr(params.colors, area),
+                ax=ax[i],
+            )
+            ax[i].set_title(area)
 
-    for i, area in enumerate(areas):
-        data = pd.DataFrame(
-            {
-                "PR": results[area]["free"] + results[area]["inter"] + results[area]["trial"],
-                "Condition": ["free0"] * len(results[area]["free"])
-                + ["inter"] * len(results[area]["inter"])
-                + ["trial"] * len(results[area]["trial"]),
-            }
-        )
-        sns.stripplot(
-            data=data,
-            x="Condition",
-            y="PR",
-            s=8,
-            color=getattr(params.colors, area),
-            ax=ax[i],
-        )
-        ax[i].set_title(area)
-
-    plt.suptitle(title)
-    plt.tight_layout()
-    plt.show()
+        plt.suptitle(title)
+        plt.tight_layout()
+        plt.show()
+    return results
 
 
 def plot_latents(

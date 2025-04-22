@@ -73,3 +73,4 @@ class colors:
     lower = "cornflowerblue"
     contra = "orange"
     ipsi = "cornflowerblue"
+    GPe = "k"

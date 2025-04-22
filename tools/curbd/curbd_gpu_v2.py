@@ -127,6 +127,7 @@ class gCURBD:
                     err = cp.expand_dims(
                         self.rnn[:, :, tt] - self.a_[:, :, idx_learn], axis=-1
                     )
+
                     idx_learn = idx_learn + 1
 
                     # update chi2 using this errord
@@ -159,6 +160,7 @@ class gCURBD:
             time_values_to_compare = cp.arange(0, len(self.t_rnn), self.dt_factor)
             ss_res = cp.linalg.norm((self.a_ - self.rnn[:, :, time_values_to_compare]))
             ss_tot = cp.sqrt(self.n_units * len(self.t_data)) * cp.std(self.a_)
+
             pVar = 1 - (ss_res / ss_tot) ** 2
 
             # updates metrics
@@ -167,7 +169,11 @@ class gCURBD:
 
             if self.verbose:
                 print("trial=%d pVar=%f chi2=%f" % (epoch, pVar, chi2))
-        return
+
+        self.chi2s = chi2s
+        self.pVars = pVars
+
+        return chi2s, pVars
 
     def fit(self, a):
 

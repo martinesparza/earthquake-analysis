@@ -5,7 +5,9 @@ import pyaldata as pyal
 from tools import params
 
 
-def compare_mean_firing(ax, df, trial_types=["trial", "intertrial"], areas=["M1", "Dls"]):
+def compare_mean_firing_across_trials(
+    ax, df, trial_types=["trial", "intertrial"], areas=["M1", "Dls"]
+):
     mean_values = []
     std_errors = []
 
@@ -21,9 +23,9 @@ def compare_mean_firing(ax, df, trial_types=["trial", "intertrial"], areas=["M1"
 
             # Compute overall mean and standard error
             mean_area = mean_firing_rates.mean()
-            std_error = mean_firing_rates.std() / np.sqrt(
-                len(mean_firing_rates)
-            )  # Standard Error of the Mean (SEM)
+            std_error = mean_firing_rates.std()  # / np.sqrt(
+            # len(mean_firing_rates)
+            # )  # Standard Error of the Mean (SEM)
 
             mean_values.append(mean_area)
             std_errors.append(std_error)
@@ -46,8 +48,8 @@ def compare_mean_firing(ax, df, trial_types=["trial", "intertrial"], areas=["M1"
         mean_values,
         yerr=std_errors,
         fmt="o",
-        capsize=5,
-        markersize=5,
+        capsize=0,
+        markersize=15,
         color="k",
         label="Mean ± SEM",
     )
@@ -55,9 +57,9 @@ def compare_mean_firing(ax, df, trial_types=["trial", "intertrial"], areas=["M1"
     # Labels and formatting
     ax.set_xticks(range(len(areas) * len(trial_types)))
     ax.set_xticklabels(trial_types * len(areas))
-    ax.set_ylabel("Mean Firing Rate")
-    ax.set_title("Mean firing rates, free trials")
+    ax.set_ylabel("Mean Firing Rate (Hz)")
+    # ax.set_title("Mean firing rates, free trials")
     # ax.set_ylim([0, 50])
-    ax.legend()
+    # ax.legend()
 
     plt.show()

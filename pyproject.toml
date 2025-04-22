@@ -18,6 +18,7 @@ scikit-learn = "^1.6.1"
 pyaldata = { git = "git@github.com:BeNeuroLab/PyalData.git", develop = true }
 statsmodels = "^0.14.4"
 cupy-cuda12x = "^13.4.1"
+torch = "^2.6.0"
 
 
 [build-system]
