@@ -19,11 +19,13 @@ class Params:
         rel_start=int(WINDOW_perturb[0] / BIN_SIZE),
         rel_end=int(WINDOW_perturb[1] / BIN_SIZE),
     )
-    WINDOW_perturb_short = (-0.1, 1.5)
-    perturb_epoch = pyal.generate_epoch_fun(
+
+
+    WINDOW_perturb_long = (-1, 3)
+    perturb_epoch_long = pyal.generate_epoch_fun(
         start_point_name="idx_sol_on",
-        rel_start=int(WINDOW_perturb[0] / BIN_SIZE),
-        rel_end=int(WINDOW_perturb[1] / BIN_SIZE),
+        rel_start=int(WINDOW_perturb_long[0] / BIN_SIZE),
+        rel_end=int(WINDOW_perturb_long[1] / BIN_SIZE),
     )
 
     # 0 = ipsi, 1 = contra
@@ -64,7 +66,7 @@ class colors:
     all = "k"
     MOp = "forestgreen"
     CP = "blue"
-    SSp_ll = "darkgreen"
+    SSp_ll = "limegreen"
     SSp = "limegreen"
     Thal = "red"
     VAL = "red"
