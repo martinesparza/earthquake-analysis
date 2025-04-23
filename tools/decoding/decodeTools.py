@@ -56,6 +56,7 @@ def within_decoding(
     target_ids = np.unique(allDFs[0][cat])
     conf_matrices = []
     for i, df in enumerate(allDFs):
+        # print(df["session"][0])
         for condition in trial_conditions:
             df = pyal.select_trials(df, condition)
         if from_bhv:
@@ -240,25 +241,28 @@ def plot_decoding_moving_window(
     step_size_bins = int(step / bin_size)
 
     time_points = np.arange(min_timebin, max_timebin - window_size_bins, step_size_bins)
-
-    model_full = PCA(n_components=n_components, svd_solver="full")
-
+    
+    # model_full = PCA(n_components=n_components, svd_solver="full")
+    
     for i, area in enumerate(areas):
-        for j, df in enumerate(df_list):
+        print(area)
+        modified_df_list = []
+        for j,df in enumerate(df_list):
+            model_full = PCA(n_components=n_components, svd_solver="full")
             rates = np.concatenate(df[f"{area}_rates"].values, axis=0)
             rates_model = model_full.fit(rates)
-            df_list[j] = pyal.apply_dim_reduce_model(
-                df, rates_model, f"{area}_rates", f"{area}_pca"
-            )
-
+            modified_df_list.append(pyal.apply_dim_reduce_model(df, rates_model, f"{area}_rates", f"{area}_pca"))
+        
         within_results_over_time = []
 
         for start_bin in time_points:
+            # print(start_bin, start_bin + window_size_bins)
             perturb_epoch = pyal.generate_epoch_fun(
                 start_point_name=idx_event,
                 rel_start=start_bin,
                 rel_end=start_bin + window_size_bins,
             )
+
 
             if units_per_area is not None:
                 area = "all"
@@ -267,14 +271,9 @@ def plot_decoding_moving_window(
                 units = None
 
             within_results = within_decoding(
-                cat=category,
-                allDFs=df_list,
-                area=area,
-                units=units,
-                n_components=n_components,
-                epoch=perturb_epoch,
-                model=model,
-                trial_conditions=trial_conditions,
+                cat=category, allDFs=modified_df_list, area=area, units=units,
+                n_components=n_components, epoch=perturb_epoch,
+                model=model, trial_conditions=trial_conditions
             )
             within_results_over_time.append([result for result in within_results.values()])
 
