@@ -55,7 +55,7 @@ def plot_single_neuron_raster_and_psth(
     psth = np.sum(trials_arr, axis=0)
     time = np.arange(trials_arr.shape[1])
     ax[0].plot(time, psth, color="k")
-    ax[0].fill_between(time, psth, color=getattr(colors, area), alpha=0.6)
+    ax[0].fill_between(time, psth, color=getattr(colors, f"{area}_light"))
 
     if vline is not None:
         ax[1].axvline(x=vline, linestyle="--", color="k")

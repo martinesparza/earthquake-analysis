@@ -5,6 +5,7 @@ Module for Reduced Rank Regression utilities
 import warnings
 from typing import Tuple
 
+import cupy as cp
 import numpy as np
 import sklearn
 
@@ -48,6 +49,9 @@ class ReducedRankRegression:
             warnings.warn("Matrix Y is not of type float. Changing to float")
             Y = Y.astype(float)
 
+        X = cp.asarray(X)
+        Y = cp.asarray(Y)
+
         if self.verbose:
             print(f"Fitting Reduced Rank Regression to data X: {X.shape} and Y: {Y.shape}")
 
@@ -55,8 +59,8 @@ class ReducedRankRegression:
             # Assuming X and Y are not centered
             X, Y = self.center_XY_train(X, Y)
 
-        lam_mat = self.lam * np.eye(X.shape[1])
-        lam_mat_sqrt = np.sqrt(self.lam) * np.eye(X.shape[1])
+        lam_mat = self.lam * cp.eye(X.shape[1])
+        lam_mat_sqrt = cp.sqrt(self.lam) * cp.eye(X.shape[1])
 
         if self.use_sklearn:
             # Use the sklearn solver instead of the closed-form solution
@@ -64,11 +68,11 @@ class ReducedRankRegression:
             b_ridge = ridge.fit(X, Y).coef_.T
 
         else:
-            b_ridge = np.linalg.pinv(X.T @ X + lam_mat) @ X.T @ Y
+            b_ridge = cp.linalg.pinv(X.T @ X + lam_mat) @ X.T @ Y
 
-        X_star = np.vstack((X, lam_mat_sqrt))
-        Y_star = X_star @ b_ridge
-        _, _, Vt = np.linalg.svd(Y_star)
+        # X_star = cp.vstack((X, lam_mat_sqrt))
+        Y_star = cp.vstack((X, lam_mat_sqrt)) @ b_ridge
+        _, _, Vt = cp.linalg.svd(Y_star @ b_ridge, full_matrices=False)
 
         self.coef_ = b_ridge @ Vt.T[:, : self.rank] @ Vt[: self.rank, :]
 
@@ -82,8 +86,10 @@ class ReducedRankRegression:
             raise ValueError("Model is not fitted yet. ")
         if not np.issubdtype(X.dtype, np.floating):
             warnings.warn("Matrix X is not of type float. Changing to float")
-            X = X.astype(float)
-        return (X - self.X_train_mean) @ self.coef_ + self.Y_train_mean
+
+        X = cp.asarray(X)
+
+        return ((X - self.X_train_mean) @ self.coef_ + self.Y_train_mean).get()
 
     def get_weights(self) -> np.ndarray:
         if self.coef_ is None:

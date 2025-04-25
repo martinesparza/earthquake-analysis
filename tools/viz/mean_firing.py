@@ -39,7 +39,7 @@ def compare_mean_firing_across_trials(
                 mean_firing_rates,
                 alpha=0.6,
                 label=f"{area}",
-                color=getattr(params.colors, area, "k"),
+                color=getattr(params.colors, f"{area}_light", "k"),
             )
             i += 1
     # Overlay mean firing rate with error bars
@@ -63,3 +63,4 @@ def compare_mean_firing_across_trials(
     # ax.legend()
 
     plt.show()
+    return

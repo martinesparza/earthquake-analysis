@@ -6,7 +6,7 @@ from tools.params import colors
 
 
 def create_cmap_from_area(area):
-    target_colour = getattr(colors, area)
+    target_colour = getattr(colors, f"{area}_light")
     cmap = LinearSegmentedColormap.from_list("white_to_teal", ["#ffffff", target_colour])
     return cmap
 
@@ -19,7 +19,7 @@ def shaded_errorbar(
     lineStat=np.mean,
     errorStat=np.std,
     alpha=0.2,
-    **props
+    **props,
 ):
     """
     ax: axis to plot into
@@ -58,7 +58,7 @@ def shaded_errorbar(
         lineStat(y, axis=1) - shadedY,
         lineStat(y, axis=1) + shadedY,
         alpha=alpha,
-        **shadeProps
+        **shadeProps,
     )
 
     return line, shade
