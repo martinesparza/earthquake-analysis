@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+import numpy as np
 import pyaldata as pyal
 
 
@@ -19,7 +20,6 @@ class Params:
         rel_start=int(WINDOW_perturb[0] / BIN_SIZE),
         rel_end=int(WINDOW_perturb[1] / BIN_SIZE),
     )
-
 
     WINDOW_perturb_long = (-1, 3)
     perturb_epoch_long = pyal.generate_epoch_fun(
@@ -64,12 +64,24 @@ class colors:
     M1 = "r"
     Dls = "g"
     all = "k"
-    MOp = "forestgreen"
-    CP = "blue"
-    SSp_ll = "limegreen"
-    SSp = "limegreen"
+    MOp = np.array([116, 40, 129]) / 255  # "forestgreen"
+    MOp_light = np.array([152, 110, 172]) / 255
+    MOp_light_light = np.array([195, 164, 207]) / 255  # "forestgreen"
+
+    CP = np.array([16, 101, 171]) / 255  # "blue"
+    CP_light = np.array([58, 147, 195]) / 255
+    CP_light_light = np.array([142, 196, 222]) / 255  # "blue"
+
+    SSp_ll = "darkgreen"
+    SSp = np.array([27, 121, 57]) / 255  # "limegreen"
+    SSp_light = np.array([92, 174, 99]) / 255
+    SSp_light_light = np.array([173, 212, 160]) / 255  # "limegreen"
+
     Thal = "red"
-    VAL = "red"
+    VAL = np.array([179, 21, 41]) / 255  # "red"
+    VAL_light = np.array([215, 95, 76]) / 255
+    VAL_light_light = np.array([246, 164, 130]) / 255  # "red"
+
     corr_cmap = "viridis"
     upper = "orange"
     lower = "cornflowerblue"
