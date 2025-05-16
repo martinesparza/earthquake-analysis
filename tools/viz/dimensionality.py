@@ -191,6 +191,8 @@ def plot_latents(
     motion_only=True,
     errorbars=False,
     errorStat=sem,
+    figsize=(10, 9),
+    show=True,
 ):
 
     axes = []
@@ -210,7 +212,7 @@ def plot_latents(
     n_cols = len(areas)  # Columns: areas
     targets = np.unique(df[category])
 
-    fig, axes = plt.subplots(n_components, n_cols, figsize=(20, 9), sharex="all")
+    fig, axes = plt.subplots(n_components, n_cols, figsize=figsize, sharex="all")
     axes = np.array(axes).reshape(n_rows, n_cols)
 
     # Loop through areas (columns) and trial types (rows)
@@ -257,8 +259,9 @@ def plot_latents(
             if col == 0:
                 ax.set_ylabel(f"PC {row}")
         ax.set_xlabel("Timebins (30ms)")
-    plt.show()
-    return
+    if show:
+        plt.show()
+    return fig, axes
 
 
 def get_VAF(
