@@ -2,7 +2,12 @@ import math
 
 import numpy as np
 import matplotlib.pyplot as plt
+
+# Add the project root to sys.path
+import sys
+sys.path.append('/data/PyalData')
 import pyaldata
+
 import pylab
 import math
 import os
@@ -13,7 +18,7 @@ from plotly.subplots import make_subplots
 from IPython.core.pylabtools import figsize
 from numpy.core.records import ndarray
 
-import curbd
+from tools.curbd import curbd
 from sklearn.decomposition import PCA
 from sklearn.cross_decomposition import CCA
 
