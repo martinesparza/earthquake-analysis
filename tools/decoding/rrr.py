@@ -7,9 +7,109 @@ from typing import Tuple
 
 import cupy as cp
 import numpy as np
+import pyaldata as pyal
 import sklearn
+from sklearn.decomposition import PCA
+from sklearn.model_selection import KFold
 
 import tools.decoding.decodeTools as decutils
+from tools.params import Params
+
+
+def _get_data_for_rrr(df, area, condition, n_components=20, epoch=None, free_period=0):
+    df_rrr = pyal.select_trials(df, df.trial_name == condition)
+
+    if epoch is not None:
+        df_rrr = pyal.restrict_to_interval(df_rrr, epoch_fun=epoch)
+
+    # Get data
+    if condition == "free":
+        rates = df_rrr[f"{area}_rates"].values[free_period]
+    elif condition == "trial":
+        df_rrr = pyal.restrict_to_interval(df_rrr, epoch_fun=Params.perturb_epoch)
+        rates = np.concatenate(df_rrr[f"{area}_rates"].values, axis=0)
+
+    else:
+        rates = np.concatenate(df_rrr[f"{area}_rates"].values, axis=0)
+
+    model = PCA(n_components=n_components, svd_solver="full")
+    model.fit(rates)
+    X = model.fit_transform(rates)
+    return X
+
+
+def compute_rrr_on_df(
+    df,
+    areas,
+    condition,
+    k_folds=5,
+    n_components=20,
+    timepoints=None,
+    verbose=True,
+    free_period=0,
+):
+
+    results_rrr_ = {}
+    kf = KFold(n_splits=k_folds, shuffle=False)
+
+    for area_x in areas:
+        results_rrr_[area_x] = {}
+
+        X = _get_data_for_rrr(
+            df,
+            area_x,
+            condition=condition,
+            n_components=n_components,
+            free_period=free_period,
+        )
+        rnd_timepoints = np.random.choice(X.shape[0], size=timepoints, replace=False)
+
+        for area_y in areas:
+            Y = _get_data_for_rrr(
+                df,
+                area_y,
+                condition=condition,
+                n_components=n_components,
+                free_period=free_period,
+            )
+
+            # Get data
+            r2 = []
+
+            if timepoints is not None:
+                X_subsampled = X[rnd_timepoints, :]
+                Y = Y[rnd_timepoints, :]
+            else:
+                X_subsampled = X
+
+            for train_index, test_index in kf.split(X_subsampled):
+
+                X_train, X_test = X_subsampled[train_index], X_subsampled[test_index]
+                Y_train, Y_test = Y[train_index], Y[test_index]
+
+                # Fit model
+                model = ReducedRankRegression(r=10, lam=0.05, use_sklearn=False)
+                model.fit(X=X_train, Y=Y_train)
+
+                # Predict
+                Y_pred_test = model.predict(X_test)
+                multi_r2, col_r2 = decutils.multivariate_r2(Y_test, Y_pred_test)
+                # print(f"{area_x} to {area_y}: {multi_r2:.3f}")
+                r2.append(multi_r2)
+            if verbose:
+                print(f"{area_x} to {area_y}: {np.array(r2).mean():.3f}")
+
+            results_rrr_[area_x][area_y] = np.array(r2)
+
+    mempool = cp.get_default_memory_pool()
+    pinned_mempool = cp.get_default_pinned_memory_pool()
+
+    # You can clear the memory pool by calling `free_all_blocks`.
+    mempool.free_all_blocks()
+    pinned_mempool.free_all_blocks()
+    if verbose:
+        print("Freed memory pool")
+    return results_rrr_
 
 
 class ReducedRankRegression:

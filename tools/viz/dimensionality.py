@@ -7,21 +7,8 @@ from scipy.stats import sem
 from sklearn.decomposition import PCA
 
 from tools import params
-from tools.dimensionality.participation import pca_pr
+from tools.dimensionality.participation import isomap_pr, pca_pr
 from tools.viz import utilityTools as utility
-
-
-def get_pr_for_subsets_of_neurons(arr, niter=5):
-    results = []
-    for num_neurons in np.arange(5, arr.shape[1] + 1, 10):
-        prs = []
-        for _ in range(niter):
-            random_neurons = np.random.randint(0, arr.shape[1], size=num_neurons)
-            pr = pca_pr(arr[:, random_neurons])
-            prs.append(pr)
-
-        results.append(prs)
-    return np.vstack(results)
 
 
 def plot_VAF(
@@ -54,7 +41,10 @@ def plot_VAF(
         VAF_per_area = []
         for session, df in enumerate(data_list):
             df_ = pyal.restrict_to_interval(df, epoch_fun=epoch) if epoch is not None else df
-            rates = np.concatenate(df_[field].values, axis=0)
+            if type(df_) == pd.core.series.Series:
+                rates = df_[field][:]
+            else:
+                rates = np.concatenate(df_[field].values, axis=0)
             if units_per_area is not None:
                 rates = rates[:, units_per_area[i][0] : units_per_area[i][1]]
 
@@ -86,6 +76,7 @@ def plot_VAF(
     ax.set_title("Variance accounted for by PCs")
     ax.axhline(y=0.8, color="red", linestyle="--")
     ax.legend()
+    print(pca_pr(rates))
     if show:
         plt.show()
     else:
