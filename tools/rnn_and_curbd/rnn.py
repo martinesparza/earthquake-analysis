@@ -8,8 +8,6 @@ import pyaldata as pyal
 import pylab
 
 from tools.curbd import curbd
-from sklearn.decomposition import PCA
-from sklearn.cross_decomposition import CCA
 
 # import custom plotting functions
 from tools.rnn_and_curbd import plotting as pltz
