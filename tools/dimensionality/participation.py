@@ -154,13 +154,25 @@ def isomap_pr(X, n_neighbors=15, n_jobs=-1):
     return (np.sum(evals) ** 2) / (np.sum(evals**2))
 
 
-def pcs_percent_vaf(arr, n_components=None, percent_vaf=80):
+def normalised_components_for_vaf(arr, vaf=0.80, n_components=None):
+    """
+    Calculate the minimum number of components required to reach the specified VAF threshold.
+
+    Parameters:
+    -----------
+
+    Returns:
+    --------
+    int
+        Number of components needed to reach or exceed the threshold.
+    """
     if n_components is None:
         n_components = arr.shape[-1]
-
     model = PCA(n_components=n_components, svd_solver="full")
-    model = model.fit(arr)
-    return norm_pc_count
+    model.fit(arr)
+    cumulative_vaf = np.cumsum(model.explained_variance_ratio_)
+    num_components = np.searchsorted(cumulative_vaf, vaf) + 1
+    return num_components / n_components
 
 
 def get_pr_for_subsets_of_neurons(arr, niter=5, linear=True, verbose=False):
@@ -181,16 +193,16 @@ def get_pr_for_subsets_of_neurons(arr, niter=5, linear=True, verbose=False):
     return np.vstack(results)
 
 
-def get_pcs_percentVAF_subsets_neurons(arr, niter=5, linear=True, verbose=False, vaf=80):
+def get_pcs_percentVAF_subsets_neurons(arr, niter=5, linear=True, verbose=False, vaf=0.8):
     results = []
     for num_neurons in np.arange(5, arr.shape[1] + 1, 10):
         if verbose:
             print(f"Neurons: {num_neurons}")
-        prs = []
+        pc_counts = []
         for _ in range(niter):
             random_neurons = np.random.randint(0, arr.shape[1], size=num_neurons)
-            norm_pc_count = pcs_percent_vaf(arr[:, random_neurons], vaf=vaf)
-            prs.append(pr)
+            norm_pc_count = normalised_components_for_vaf(arr[:, random_neurons], vaf=vaf)
+            pc_counts.append(norm_pc_count)
 
-        results.append(prs)
+        results.append(pc_counts)
     return np.vstack(results)
