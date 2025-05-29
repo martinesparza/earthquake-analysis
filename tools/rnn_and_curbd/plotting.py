@@ -297,8 +297,12 @@ def plot_currents_by_region(all_currents, all_currents_labels, perturbation_time
 
     return fig
 
-def plot_pca_currents(all_currents, all_currents_labels, perturbation_time, mouse_num):
-    fig = pylab.figure(figsize=(10, 8))
+def plot_pca_currents(all_currents, all_currents_labels, perturbation_time, mouse_num, fig_size = None):
+    if fig_size != None:
+        fig = pylab.figure(figsize=fig_size)
+    else:
+        fig = pylab.figure(figsize=(10, 8))
+    
     count = 1
     n_regions = int(math.sqrt(len(all_currents)))
     colours = ['C0', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']
