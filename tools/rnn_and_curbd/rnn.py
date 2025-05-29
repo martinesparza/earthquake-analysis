@@ -14,21 +14,25 @@ from tools.rnn_and_curbd import plotting as pltz
 
 ### Functions written for trial-avg rnn training ###
 
-def average_by_trial(df, trial_categories):
+def average_by_trial(df, trial_categories, trial_col_name='values_Sol_direction'):
     if not isinstance(df['all_rates'].iloc[0], np.ndarray):
         df['all_rates'] = df['all_rates'].apply(np.array)
 
     averaged_activity = []
     for cat in trial_categories:
-        angle_group = df[df['values_Sol_direction'] == cat]['all_rates']
-
+        angle_group = df[df[trial_col_name] == cat]['all_rates']
         angle_array = np.stack(angle_group.values)
-
         mean_activity = np.mean(angle_array, axis=0)
-
         averaged_activity.append(mean_activity)
 
-    averaged_activity = np.array(averaged_activity)
+    try:
+        averaged_activity_array = np.array(averaged_activity)
+        return averaged_activity_array
+    except ValueError:
+        print("Warning: Averaged arrays have different shapes; returning a list instead.")
+        return averaged_activity
+
+    # averaged_activity = np.array(averaged_activity)
 
     return averaged_activity
 
@@ -42,6 +46,24 @@ def get_reset_points(df, activity, areas, dtFactor):
     reset_points = []
     for i in range(len(df)):
         reset_points.append(i * trial_len * dtFactor)  # alter for consideration of dtFactor
+
+    return reset_points
+
+def get_intertrial_reset_points(df, activity, trial_types, areas, dtFactor):
+    # check for length inconsistencies bewteen brain region within a row
+    trial_len = df[areas[0]][0].shape[0]
+    if all(df[col][0].shape[0] == trial_len for col in areas):
+        print(f"Trial length: {trial_len}")
+    else:
+        print("Variable trial length!")
+
+    # make reset points, but the trial length differ between trials
+
+    reset_points = [0]
+    for i in range(len(trial_types)):
+        previous = reset_points[-1]
+        next = previous + (trial_types[i] * dtFactor)
+        reset_points.append(int(next)) 
 
     return reset_points
 
