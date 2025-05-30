@@ -394,47 +394,59 @@ def plot_currents_by_region(all_currents, all_currents_labels, perturbation_time
 
     return fig
 
-def plot_intertrial_currents(all_currents, all_currents_labels, original_shapes, bin_size, dtFactor, mouse_num):
+def plot_intertrial_currents_by_region(all_currents, all_currents_labels, original_shapes, bin_size, dtFactor, mouse_num):
     fig = pylab.figure(figsize=[20, 12])
     count = 1
     n_regions = int(math.sqrt(len(all_currents)))
-    colours = ['C0', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']
+    colours = ['C0', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9'] # the classic colours
 
     global_min, global_max = float('inf'), float('-inf')
+    mean_sem_data = [[] for _ in range(len(all_currents))]
 
     # First pass: find global y-limits
+    for i in range(len(all_currents)): # through 4 dir of current
+        for trial_type in range(len(all_currents[i])): # through each trial type (np array)
+            current_data = all_currents[i][trial_type]
+
+            mean_current = np.mean(current_data, axis=(0))
+            sem_current = np.std(current_data, axis=(0)) / np.sqrt(current_data.shape[0])
+
+            y_lower = np.min(mean_current - sem_current)
+            y_upper = np.max(mean_current + sem_current)
+
+            global_min = min(global_min, y_lower)
+            global_max = max(global_max, y_upper)
+
+            mean_sem_data[i].append((mean_current, sem_current))
+    
+    # Second pass: plot with shared y-axis
     for i in range(len(all_currents)):
-        # for plotting
         current_label = all_currents_labels[i]
         colour = colours[i % len(colours)]
+        time_axis = np.linspace(0, (all_currents[i][-1].shape[1] * bin_size)/dtFactor, all_currents[i][-1].shape[1])
+
         axn = fig.add_subplot(n_regions, n_regions, count)
         count += 1
 
-        # Split data by intertrial length
-        split_by_trial = []
-        longest_trial = float('-inf')
-        for trial in all_currents[i]:
-            for i in range(4):
-                data = np.array(trial[i])
-                if data.shape[0] > longest_trial:
-                    longest_trial = data.shape[0]
-                split_by_trial.append(data)
+        for trial_type in range(len(all_currents[i])):
+            mean_current, sem_current = mean_sem_data[i][trial_type]
+            t = time_axis[:len(mean_current)]
 
-        time_axis = np.linspace(0, (longest_trial * bin_size)/dtFactor, longest_trial)
-        for trial in  split_by_trial:
-            t = time_axis[:len(trial)]  # Match time to trial length
-            axn.plot(t, trial, linewidth=2, color=colour)
+            axn.plot(t, mean_current, linewidth=2, color=colour)
+            axn.fill_between(t, mean_current - sem_current, mean_current + sem_current, alpha=0.3, color=colour)
 
         axn.set_title(f'{current_label} mean current', fontsize='xx-large')
+        axn.set_xlabel('Time (s)', fontsize='xx-large')
         axn.set_ylabel('Current Strength', fontsize='xx-large')
-        
-    fig.suptitle(f'Average current across all trials - Mouse {mouse_num}', fontsize='xx-large')
+
+        axn.set_ylim(global_min, global_max)
+
+    fig.suptitle(f'Average current across all intertrials - Mouse {mouse_num}', fontsize='xx-large')
     fig.tight_layout()
     fig.show()
 
-
     return fig
-
+    
 def plot_pca_currents(all_currents, all_currents_labels, perturbation_time, mouse_num, fig_size = None):
     if fig_size != None:
         fig = pylab.figure(figsize=fig_size)
@@ -495,3 +507,92 @@ def plot_pca_currents(all_currents, all_currents_labels, perturbation_time, mous
     fig.show()
 
     return fig
+
+def plot_intertrial_pca_currents(all_currents, all_currents_labels, trial_labels, mouse_num, fig_size=None):
+    if fig_size is not None:
+        fig = pylab.figure(figsize=fig_size)
+    else:
+        fig = pylab.figure(figsize=(10, 8))
+    
+    count = 1
+    n_regions = int(math.sqrt(len(all_currents)))
+    trial_type_colours = ['C0', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']
+    shared_handles = []
+    shared_labels = []
+
+    for i in range(len(all_currents)):
+        current_label = all_currents_labels[i]
+        axn = fig.add_subplot(n_regions, n_regions, count, projection='3d')
+        count += 1
+
+        for j in range(len(all_currents[i])):
+            current_data = all_currents[i][j]
+            pca = PCA(n_components=3)
+            pca_curr = pca.fit_transform(current_data.T)
+
+            # Only gather handles/labels for the first subplot
+            if i == 0:
+                # Add trial start label once
+                if j == 0:
+                    h_start = axn.scatter(
+                        pca_curr[0, 0],
+                        pca_curr[0, 1],
+                        pca_curr[0, 2],
+                        marker='x',
+                        color='black',
+                        s=60,
+                        label="trial start"
+                    )
+                    shared_handles.append(h_start)
+                    shared_labels.append("trial start")
+                # Add trajectory label
+                h_plot, = axn.plot(
+                    pca_curr[:, 0],
+                    pca_curr[:, 1],
+                    pca_curr[:, 2],
+                    color=trial_type_colours[j],
+                    label=trial_labels[j],
+                    linewidth=2
+                )
+                shared_handles.append(h_plot)
+                shared_labels.append(trial_labels[j])
+            else:
+                axn.scatter(
+                    pca_curr[0, 0],
+                    pca_curr[0, 1],
+                    pca_curr[0, 2],
+                    marker='x',
+                    color='black',
+                    s=60
+                )
+                axn.plot(
+                    pca_curr[:, 0],
+                    pca_curr[:, 1],
+                    pca_curr[:, 2],
+                    color=trial_type_colours[j],
+                    linewidth=2
+                )
+
+        axn.set_title(f'{current_label}', fontsize='x-large')
+        axn.set_xlabel('PC1')
+        axn.set_ylabel('PC2')
+        axn.set_zlabel('PC3')
+        axn.grid(False)
+
+    # Add shared legend outside the subplots
+    fig.legend(
+        handles=shared_handles,
+        labels=shared_labels,
+        loc='lower center',
+        bbox_to_anchor=(0.5, 1.03),
+        ncol=len(trial_labels) + 1,
+        fontsize='large'
+    )
+    fig.suptitle(f'PCA of intertrial mean currents (trajectories per type) - Mouse {mouse_num}', fontsize='xx-large')
+    fig.tight_layout()
+    fig.show()
+
+    return fig
+
+
+
