@@ -17,7 +17,6 @@ import PyalData.pyaldata as pyal  # type: ignore
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
-print("ggg", project_root)
 
 # Import custom tool modules
 from tools.curbd import curbd
@@ -37,24 +36,38 @@ importlib.reload(curbdz)
 np.random.seed(44)
 
 # === Load Data ===
-data_dir = "/data/raw/M044/M044_2024_12_04_09_30"
-mat_file = "M044_2024_12_04_09_30_pyaldata.mat"
-fname = os.path.join(data_dir, mat_file)
+data_dir = "/data/raw/M062/M062_2025_03_21_14_00"
+mat_file_0= "M062_2025_03_21_14_00_pyaldata_0.mat"
+mat_file_1= "M062_2025_03_21_14_00_pyaldata_1.mat"
+mat_file_2= "M062_2025_03_21_14_00_pyaldata_2.mat"
 
-print(f"\nLoading data from: {fname}")
-df = pyal.mat2dataframe(fname, shift_idx_fields=True)
+fname0 = os.path.join(data_dir, mat_file_0)
+fname1 = os.path.join(data_dir, mat_file_1)
+fname2 = os.path.join(data_dir, mat_file_2)
+
+print(f"\nLoading data from: {fname0}, {fname1} and {fname2}")
+
+df0 = pyal.mat2dataframe(fname0, shift_idx_fields=True)
+df1 = pyal.mat2dataframe(fname1, shift_idx_fields=True)
+df2 = pyal.mat2dataframe(fname2, shift_idx_fields=True)
+df = pd.concat([df0, df1, df2], ignore_index=True)
+df = df.drop(columns="all_spikes") # the content is incorrect
 
 # === Preprocessing ===
 print("Preprocessing data...")
 df_ = preprocess(df, only_trials=True)
-df_["M1_rates"] = [trial[:, 300:] for trial in df_["all_rates"]]
-df_["Dls_rates"] = [trial[:, :300] for trial in df_["all_rates"]]
-areas = ["M1_rates", "Dls_rates"]
+BIN_SIZE = df_['bin_size'][0]
+# get 'all_rates' column
+areas =[ "MOp_rates", "SSp_rates", "CP_rates", "VAL_rates"]
+df_ = pyal.merge_signals(df_, areas, "all_rates")
+
+# correct trial length - this is an error in pyaldata
+df_['trial_length'] = (df_['trial_length'] / (BIN_SIZE * 100)).astype(int)
+df_ = df_[df_['trial_length'] == 200]
 
 # === Metadata ===
-session_id = mat_file.replace("_pyaldata.mat", "")
+session_id = mat_file_0.replace("_pyaldata_0.mat", "")
 mouse = session_id.split('_')[0]
-BIN_SIZE = df['bin_size'][0]
 perturb_time_idx = df_.idx_sol_on[0]
 perturb_time_sec = perturb_time_idx * BIN_SIZE
 
@@ -108,5 +121,3 @@ try:
     print("Model saved successfully.")
 except Exception as e:
     print(f"Error saving RNN model: {e}")
-
-
