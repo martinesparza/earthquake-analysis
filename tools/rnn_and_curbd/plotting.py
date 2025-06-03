@@ -38,7 +38,7 @@ def plot_model_accuracy(model, mouse_num):
     axn.set_xlabel("Iterations", fontsize=16)
     axn.set_ylim(0, max(model['chi2s']))
     fig.tight_layout()
-    fig.suptitle(f"RNN Model accurancy - mouse {mouse_num}")
+    fig.suptitle(f"RNN Model accurancy - mouse {mouse_num}", y=1.02)
 
     return fig
 
@@ -64,6 +64,7 @@ def plot_3pcs(fig, data, subplot_num, trial_labels, title):
     # Support both NumPy arrays and lists of arrays
     if isinstance(data, np.ndarray):
         for trial in range(data.shape[0]):
+
             ax1.plot(data[trial, :, 0],
                      data[trial, :, 1],
                      data[trial, :, 2], label=trial_labels[trial])
@@ -81,7 +82,7 @@ def plot_3pcs(fig, data, subplot_num, trial_labels, title):
     ax1.set_zlabel('PC3')
     ax1.legend(loc='upper left')
 
-def plot_pca(real_data, rnn_data, original_shapes, mouse_num, trial_labels):
+def plot_pca(real_data, rnn_data, original_shapes, trial_labels, mouse_num):
     reconstructed_data_avg = np.split(real_data, np.cumsum(original_shapes)[:-1])
     reconstructed_rnn = np.split(rnn_data, np.cumsum(original_shapes)[:-1])
 
@@ -93,7 +94,7 @@ def plot_pca(real_data, rnn_data, original_shapes, mouse_num, trial_labels):
         else:
             print(f"Warning: {label} has inconsistent shapes, returning list instead.")
             return data_list
-
+        
     reconstructed_data_avg = try_convert_to_array(reconstructed_data_avg, label="Recorded data")
     reconstructed_rnn = try_convert_to_array(reconstructed_rnn, label="RNN data")
 
