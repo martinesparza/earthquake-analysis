@@ -3,8 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import sys
-sys.path.append('/data/PyalData')
-import pyaldata as pyal
+sys.path.append("/home/zms24/Desktop")
+import PyalData.pyaldata as pyal
 import pylab
 
 from tools.curbd import curbd
