@@ -1,6 +1,8 @@
 from dataclasses import dataclass
+import sys
+sys.path.append("/home/zms24/Desktop")
+import PyalData.pyaldata as pyal
 
-import pyaldata as pyal
 
 
 @dataclass
