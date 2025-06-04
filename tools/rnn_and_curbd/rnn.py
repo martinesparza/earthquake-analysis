@@ -1,15 +1,18 @@
 # imports
+import os
 import numpy as np
+import pandas as pd
+import glob
 import matplotlib.pyplot as plt
-
+from typing import Union, List
 import sys
 sys.path.append("/home/zms24/Desktop")
 import PyalData.pyaldata as pyal
 import pylab
 
+sys.path.append("/home/zms24/Desktop/earthquake/earthquake-analysis/")
+from tools.dsp.preprocessing import preprocess
 from tools.curbd import curbd
-
-# import custom plotting functions
 from tools.rnn_and_curbd import plotting as pltz
 
 ### Functions written for trial-avg rnn training ###
@@ -153,4 +156,71 @@ def rescale_array(arr):
         return np.zeros_like(arr)  # Avoid division by zero if all values are the same
 
     return (arr - arr_min) / (arr_max - arr_min)
+
+def process_pyal_M061_M062_files(pyal_files: Union[str, List[str]], rnn_model, root_dir: str = "/data/raw") -> dict:
+    if isinstance(pyal_files, str):
+        pyal_files = [pyal_files]
+
+    dfs = []
+    for pyal_file in pyal_files:
+        # Extract subject ID and session ID (supporting session timestamps with 5 parts like "2025_03_04_10_00")
+        parts = pyal_file.split("_")
+        subject_id = parts[2]
+        session_id = ("_".join(parts[3:])).split('.')[0]  # e.g., 2025_03_04_10_00
+
+        # Construct the directory and use glob to find matching files
+        data_dir = os.path.join(root_dir, subject_id, f"{subject_id}_{session_id}")
+        file_pattern = os.path.join(data_dir, f"{subject_id}_{session_id}_pyaldata_*.mat")
+        matched_files = glob.glob(file_pattern)
+
+        if not matched_files:
+            raise FileNotFoundError(f"No matching files found for pattern: {file_pattern}")
+
+        for fname in matched_files:
+            df = pyal.mat2dataframe(fname, shift_idx_fields=True)
+            dfs.append(df)
+
+    # Combine and preprocess - custom for M061 and M062
+    df = pd.concat(dfs, ignore_index=True)
+    df = df.drop(columns="all_spikes") # the content is incorrect
+    df_ = preprocess(df, only_trials=True)
+
+    BIN_SIZE = df_['bin_size'][0]
+    areas = [col for col in df_.columns if col.endswith("_rates") and col != "all_rates"]
+    # areas = ["MOp_rates", "SSp_rates", "CP_rates", "VAL_rates"]
+    df_ = pyal.merge_signals(df_, areas, "all_rates")
+
+    # Correct trial length
+    df_['trial_length'] = (df_['trial_length'] / (BIN_SIZE * 100)).astype(int)
+    df_ = df_[df_['trial_length'] == 200]
+
+    # Metadata
+    areas = [col for col in df_.columns if col.endswith("_rates") and col != "all_rates"]
+    perturbation_time = df_.idx_sol_on[0]
+    perturbation_time_sec = perturbation_time * df_['bin_size'][0]
+    sol_angles = df_.values_Sol_direction.unique()
+    sol_angles.sort()
+    trial_labels = [f"solenoid {int(angle)}" for angle in sol_angles]
+    trial_avg_rates = average_by_trial(df_, sol_angles)
+    shapes = [arr.shape[0] for arr in trial_avg_rates]
+
+    concat_rates = np.concatenate(trial_avg_rates, axis=0)
+    trial_avg_activity = np.transpose(concat_rates)
+    reset_points = get_reset_points(df_, trial_avg_activity, areas, rnn_model['params']['dtFactor'])
+    regions_arr = get_regions(df_, areas)
+
+    return {
+        'df_': df_,
+        'sol_angles': sol_angles,
+        'trial_labels': trial_labels,
+        'trial_avg_rates': trial_avg_rates,
+        'shapes': shapes,
+        'areas': areas,
+        'concat_rates': concat_rates,
+        'reset_points': reset_points,
+        'regions_arr': regions_arr,
+        'perturbation_time': perturbation_time,
+        'perturbation_time_sec': perturbation_time_sec,
+        'bin_size': BIN_SIZE
+    }
 
