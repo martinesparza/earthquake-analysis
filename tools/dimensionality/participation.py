@@ -88,17 +88,24 @@ def geodesic_dist_matrix(X, n_neighbors=15, n_jobs=-1):
         mode="distance",
         n_jobs=n_jobs,
     )
-    n_connected_components, labels = connected_components(nbg)
-    if n_connected_components > 1:
-        nbg = _fix_connected_components(
-            nbrs_._fit_X,
-            graph=nbg,
-            n_connected_components=n_connected_components,
-            component_labels=labels,
-            mode="distance",
-            metric=nbrs_.effective_metric_,
-            **nbrs_.effective_metric_params_,
-        )
+
+    # n_connected_components, labels = connected_components(nbg)
+    # if n_connected_components > 1:
+    #     # Convert to LIL before modification for efficiency
+    #     nbg_lil = nbg.tolil()
+
+    #     nbg = _fix_connected_components(
+    #         nbrs_._fit_X,
+    #         graph=nbg_lil,
+    #         n_connected_components=n_connected_components,
+    #         component_labels=labels,
+    #         mode="distance",
+    #         metric=nbrs_.effective_metric_,
+    #         **nbrs_.effective_metric_params_,
+    #     )
+
+    #     # Convert fixed graph back to CSR
+    #     nbg = nbg_fixed.tocsr()
 
     dist_matrix_ = shortest_path(nbg, method="auto", directed=False)
 
@@ -186,7 +193,7 @@ def get_pr_for_subsets_of_neurons(arr, niter=5, linear=True, verbose=False):
             if linear:
                 pr = pca_pr(arr[:, random_neurons])
             else:
-                pr = isomap_pr(arr[:, random_neurons])
+                pr = isomap_pr(arr[:10000, random_neurons])
             prs.append(pr)
 
         results.append(prs)

@@ -50,6 +50,7 @@ def preprocess(
     only_trials: bool = True,
     trial_selection_criteria: None | list = None,
     repair_time_varying_fields: None | list = None,
+    combine_time_bins=True,
 ) -> pd.DataFrame:
     """
     Preprocessing steps to manipulate trial data structure
@@ -93,9 +94,10 @@ def preprocess(
             df = pyal.select_trials(df, condition)
 
     # Combine time bins
-    assert np.all(df.bin_size == 0.01), "bin size is not consistent!"
-    df = pyal.combine_time_bins(df, int(Params.BIN_SIZE / 0.01))
-    print(f"Combined every {int(Params.BIN_SIZE / 0.01)} bins")
+    if combine_time_bins:
+        assert np.all(df.bin_size == 0.01), "bin size is not consistent!"
+        df = pyal.combine_time_bins(df, int(Params.BIN_SIZE / 0.01))
+        print(f"Combined every {int(Params.BIN_SIZE / 0.01)} bins")
 
     # Sqrt transformation for homoscedasticity
     for signal in time_signals:

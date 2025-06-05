@@ -32,6 +32,18 @@ def multivariate_r2(Y_true: np.ndarray, Y_pred: np.ndarray) -> Tuple[float, np.n
     return multi_r2, col_r2
 
 
+def variance_explained_weighted_r2(Y_true, Y_pred, explained_variance_ratios):
+    if Y_true.shape[1] != explained_variance_ratios.shape[0]:
+        raise ValueError(
+            f"Dimension of data {Y_true.shape[1]} dont match number of"
+            f"eigenvalues {explained_variance_ratios.shape[0]}"
+        )
+    col_r2 = columnwise_r2(Y_true, Y_pred)
+    weighted_r2 = np.average(col_r2, weights=explained_variance_ratios)
+
+    return weighted_r2
+
+
 def within_decoding(
     cat,
     allDFs,
@@ -241,18 +253,20 @@ def plot_decoding_moving_window(
     step_size_bins = int(step / bin_size)
 
     time_points = np.arange(min_timebin, max_timebin - window_size_bins, step_size_bins)
-    
+
     # model_full = PCA(n_components=n_components, svd_solver="full")
-    
+
     for i, area in enumerate(areas):
         print(area)
         modified_df_list = []
-        for j,df in enumerate(df_list):
+        for j, df in enumerate(df_list):
             model_full = PCA(n_components=n_components, svd_solver="full")
             rates = np.concatenate(df[f"{area}_rates"].values, axis=0)
             rates_model = model_full.fit(rates)
-            modified_df_list.append(pyal.apply_dim_reduce_model(df, rates_model, f"{area}_rates", f"{area}_pca"))
-        
+            modified_df_list.append(
+                pyal.apply_dim_reduce_model(df, rates_model, f"{area}_rates", f"{area}_pca")
+            )
+
         within_results_over_time = []
 
         for start_bin in time_points:
@@ -263,7 +277,6 @@ def plot_decoding_moving_window(
                 rel_end=start_bin + window_size_bins,
             )
 
-
             if units_per_area is not None:
                 area = "all"
                 units = units_per_area[i]
@@ -271,9 +284,14 @@ def plot_decoding_moving_window(
                 units = None
 
             within_results = within_decoding(
-                cat=category, allDFs=modified_df_list, area=area, units=units,
-                n_components=n_components, epoch=perturb_epoch,
-                model=model, trial_conditions=trial_conditions
+                cat=category,
+                allDFs=modified_df_list,
+                area=area,
+                units=units,
+                n_components=n_components,
+                epoch=perturb_epoch,
+                model=model,
+                trial_conditions=trial_conditions,
             )
             within_results_over_time.append([result for result in within_results.values()])
 

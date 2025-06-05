@@ -2,6 +2,8 @@ import numpy as np
 import seaborn as sns
 from matplotlib import pyplot as plt
 
+import tools.viz.utilityTools as vizutils
+
 
 def plot_rrr_heatmap_from_dict_per_area(
     dict_, areas, figsize=(8, 6), ax=None, title=None, vmin=0, vmax=1, cmap="RdBu"

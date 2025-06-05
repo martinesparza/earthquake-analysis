@@ -33,7 +33,7 @@ sessions = [
 ]
 
 step_size = 10
-n_iter = 20
+n_iter = 5
 
 for session in sessions:
 
@@ -90,6 +90,6 @@ for session in sessions:
                 )
 
 del df
-results_path = "/home/me24/repos/earthquake-analysis/results/"
-with open(results_path + "isomap_pr_all_sess_diff_num_neurons_long_perturb.pkl", "wb") as f:
+results_path = "/home/me24/repos/earthquake-analysis/results/isomap/"
+with open(results_path + f"isomap_pr_long_perturb_{session}.pkl", "wb") as f:
     pickle.dump(isomap_prs, f)
