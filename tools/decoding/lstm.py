@@ -1,6 +1,10 @@
+from typing import Callable
+
+import numpy as np
 import pandas as pd
 import pyaldata as pyal
 import torch
+from sklearn.metrics import r2_score
 from sklearn.model_selection import KFold
 from torch.utils.data import DataLoader, Dataset
 
@@ -8,13 +12,29 @@ import tools.dataTools as dt
 from tools.params import Params
 
 
-def _get_data_and_labels_from_df(df, epoch=Params.perturb_epoch_long):
+def _compute_agg_r2(predictions, labels):
+    batch_size, seq_len, n_outputs = predictions.shape
+
+    # Concatenating batch and time for each output
+    preds_flat = predictions.reshape(-1, n_outputs)  # (batch * seq_len, n_outputs)
+    labels_flat = labels.reshape(-1, n_outputs)  # (batch * seq_len, n_outputs)
+
+    r2_per_output = []
+    for output_idx in range(n_outputs):
+        r2 = r2_score(labels_flat[:, output_idx], preds_flat[:, output_idx])
+        r2_per_output.append(r2)
+
+    return np.array(r2_per_output)  # shape: (n_outputs,)
+
+
+def _get_data_and_labels_from_df(df, bhv, n_components, epoch):
     arr_data, arr_bhv = dt.get_data_array_and_pos(
         [pyal.select_trials(df, df.trial_name == "trial")],
         trial_cat="values_Sol_direction",
         epoch=epoch,
         area="MOp",
-        bhv=["left_knee", "right_knee"],
+        bhv=bhv,
+        n_components=n_components,
     )
     n_sessions, n_targets, n_trials, n_time, n_comp = arr_data.shape
     n_sessions, n_targets, n_trials, n_time, n_keypoints = arr_bhv.shape
@@ -27,8 +47,8 @@ def _get_data_and_labels_from_df(df, epoch=Params.perturb_epoch_long):
 
 class TrialDataset(Dataset):
     def __init__(self, data, labels):
-        self.data = data
-        self.labels = labels
+        self.data = data.astype(np.float32)  # ensure correct dtype
+        self.labels = labels.astype(np.float32)
 
     def __len__(self):
         return self.data.shape[0]
@@ -53,72 +73,92 @@ class BaseLSTM(torch.nn.Module):
 
     def forward(self, x):
         # x: (batch, seq_len, input_size)
-        out, _ = self.lstm(x)
-        last = out[:, -1, :]  # (batch, hidden_size)
-        return self.fc(last)  # (batch, output_horizon)
+        out, _ = self.lstm(x)  # out: (batch, seq_len, hidden_size)
+        predictions = self.fc(out)  # apply linear layer to each time step
+        return predictions  # (batch, seq_len, output_size)
 
 
 class LSTM:
     def __init__(
         self,
-        input_size: int,
-        output_size: int,
+        n_input_components: int,
+        outputs: list,
         hidden_size: int,
+        batch_size: int = 16,
         lr: float = 0.001,
         criterion: torch.nn.Module = torch.nn.MSELoss(),
         epochs: int = 100,
         device: torch.device = torch.device("cuda"),
+        epoch: Callable[[pd.Series], slice] = Params.perturb_epoch_long,
     ):
-        self.model = BaseLSTM(input_size, hidden_size, output_size)
+        self.model = BaseLSTM(n_input_components, hidden_size, len(outputs))
         self.criterion = criterion
         self.lr = lr
         self.epochs = epochs
         self.device = device
+        self.outputs = outputs
+        self.epoch = epoch
+        self.n_input_components = n_input_components
+        self.batch_size = batch_size
 
     def preprocess(self, df):
-        return _get_data_and_labels_from_df(df)
+        return _get_data_and_labels_from_df(
+            df, self.outputs, self.n_input_components, self.epoch
+        )
 
     def train(self):
+        self.model.train()
         self.model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
-        for epoch in range(1, self.epochs + 1):
-            self.model.train()
-            total_loss = 0.0
+        for epoch in range(self.epochs):
+            epoch_loss = 0.0
+            for x_batch, y_batch in self.train_loader:
+                x_batch = x_batch.to(self.device)  # (batch, n_time, n_input_components)
+                y_batch = y_batch.to(self.device).float()  # (batch, n_time, n_outputs)
 
-            print(f"Epoch {epoch}\n-------------------------------")
+                self.optimizer.zero_grad()
+                outputs = self.model(x_batch)  # (batch, n_time, n_outputs)
 
-            for batch, (X_batch, y_batch) in enumerate(self.train_loader):
-                X_batch = X_batch.to(self.device)
-                y_batch = y_batch.float().unsqueeze(1).to(self.device)
-
-                y_pred = self.model(X_batch)
-                loss = self.criterion(y_pred, y_batch)
-
-                # Backpropagation
+                loss = self.criterion(outputs, y_batch)
                 loss.backward()
                 self.optimizer.step()
-                self.optimizer.zero_grad()
 
-                total_loss += loss.item()
+                epoch_loss += loss.item()
 
-                if batch % 1000 == 0:
-                    loss, current = loss.item(), (batch + 1) * len(X_batch)
-                    print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
-            avg_loss = total_loss / len(self.train_loader)
-            print(f"Epoch {epoch:>2}/{self.epochs}, Loss: {avg_loss:.4f}")
+            avg_loss = epoch_loss / len(self.train_loader)
+            if epoch % 500 == 0:  # Also print the first epoch for context
+                print(f"\tEpoch {epoch}/{self.epochs} - Loss: {avg_loss:.4f}")
 
     def predict(self):
-        pass
+        self.model.eval()  # evaluation mode
+
+        labels = []
+        preds = []
+
+        with torch.no_grad():  # no gradients needed for inference
+            for x_batch, y_batch in self.test_loader:
+                x_batch = x_batch.to(self.device)
+                outputs = self.model(x_batch)
+
+                preds.append(outputs.cpu().detach().numpy())
+                labels.append(y_batch.cpu().detach().numpy())
+
+            preds = np.concatenate(preds, axis=0)
+            labels = np.concatenate(labels, axis=0)
+            r2 = _compute_agg_r2(preds, labels)
+
+        return r2
 
     def kfold_evaluation(self, df: pd.DataFrame, k: int = 5):
         data, labels = self.preprocess(df)
 
         kf = KFold(n_splits=k, shuffle=False)
+        r2s = []
 
-        for train_idx, test_idx in kf.split(data):
+        for fold, (train_idx, test_idx) in enumerate(kf.split(data)):
+            print(f"Fold {fold}\n-----------------------------------")
 
-            train_idx, test_idx = next(iter(kf.split(data)))  # use first fold for testing
             train_data, train_labels = data[train_idx], labels[train_idx]
             test_data, test_labels = data[test_idx], labels[test_idx]
 
@@ -126,12 +166,16 @@ class LSTM:
             test_dataset = TrialDataset(test_data, test_labels)
 
             self.train_loader = DataLoader(
-                train_dataset, batch_size=32, shuffle=True, num_workers=0
+                train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=0
             )
             self.test_loader = DataLoader(
-                test_dataset, batch_size=32, shuffle=False, num_workers=0
+                test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=0
             )
-
+            # model = BaseLSTM(input_size, hidden_size, output_size).to(device)
             self.train()
+            r2 = self.predict()
+            r2s.append(r2)
+            print(f"R2: {r2}")
 
-        pass
+        self.r2 = r2s
+        return
