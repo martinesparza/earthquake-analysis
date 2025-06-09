@@ -230,7 +230,7 @@ def interpolate_nans(matrix):
 def get_data_array_and_pos(
     data_list: list[pd.DataFrame],
     trial_cat,
-    epoch,
+    epoch=None,
     area: str = "PFC",
     n_components: int = 10,
     normalize_pos=False,
@@ -299,7 +299,8 @@ def get_data_array_and_pos(
     pos_field = "bhv"
     for i, df in enumerate(data_list):
         df = add_bhv(df, bhv)
-        df = pyal.restrict_to_interval(df, epoch_fun=epoch)
+        if epoch is not None:
+            df = pyal.restrict_to_interval(df, epoch_fun=epoch)
         for target in target_ids:
             df_ = pyal.select_trials(df, df[trial_cat] == target)
             n_shared_trial = np.min((df_.shape[0], n_shared_trial))

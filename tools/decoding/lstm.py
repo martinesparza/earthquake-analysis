@@ -83,6 +83,7 @@ class LSTM:
         self,
         n_input_components: int,
         outputs: list,
+        output_size: int,
         hidden_size: int,
         batch_size: int = 16,
         lr: float = 0.001,
@@ -91,7 +92,8 @@ class LSTM:
         device: torch.device = torch.device("cuda"),
         epoch: Callable[[pd.Series], slice] = Params.perturb_epoch_long,
     ):
-        self.model = BaseLSTM(n_input_components, hidden_size, len(outputs))
+        self.model = BaseLSTM(n_input_components, hidden_size, output_size)
+        self.hidden_size = hidden_size
         self.criterion = criterion
         self.lr = lr
         self.epochs = epochs
@@ -100,6 +102,7 @@ class LSTM:
         self.epoch = epoch
         self.n_input_components = n_input_components
         self.batch_size = batch_size
+        self.output_size = output_size
 
     def preprocess(self, df):
         return _get_data_and_labels_from_df(
@@ -127,7 +130,7 @@ class LSTM:
                 epoch_loss += loss.item()
 
             avg_loss = epoch_loss / len(self.train_loader)
-            if epoch % 500 == 0:  # Also print the first epoch for context
+            if epoch % 250 == 0:  # Also print the first epoch for context
                 print(f"\tEpoch {epoch}/{self.epochs} - Loss: {avg_loss:.4f}")
 
     def predict(self):
@@ -148,9 +151,9 @@ class LSTM:
             labels = np.concatenate(labels, axis=0)
             r2 = _compute_agg_r2(preds, labels)
 
-        return r2
+        return r2, preds, labels
 
-    def kfold_evaluation(self, df: pd.DataFrame, k: int = 5):
+    def kfold_evaluation(self, df: pd.DataFrame, k: int = 5, save_example=False):
         data, labels = self.preprocess(df)
 
         kf = KFold(n_splits=k, shuffle=False)
@@ -158,6 +161,7 @@ class LSTM:
 
         for fold, (train_idx, test_idx) in enumerate(kf.split(data)):
             print(f"Fold {fold}\n-----------------------------------")
+            self.model = BaseLSTM(self.n_input_components, self.hidden_size, self.output_size)
 
             train_data, train_labels = data[train_idx], labels[train_idx]
             test_data, test_labels = data[test_idx], labels[test_idx]
@@ -173,9 +177,13 @@ class LSTM:
             )
             # model = BaseLSTM(input_size, hidden_size, output_size).to(device)
             self.train()
-            r2 = self.predict()
+            r2, preds_, labels_ = self.predict()
             r2s.append(r2)
             print(f"R2: {r2}")
 
         self.r2 = r2s
+
+        if save_example:
+            self.example_preds = preds_
+            self.example_labels = labels_
         return

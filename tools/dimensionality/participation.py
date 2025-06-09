@@ -89,23 +89,23 @@ def geodesic_dist_matrix(X, n_neighbors=15, n_jobs=-1):
         n_jobs=n_jobs,
     )
 
-    # n_connected_components, labels = connected_components(nbg)
-    # if n_connected_components > 1:
-    #     # Convert to LIL before modification for efficiency
-    #     nbg_lil = nbg.tolil()
+    n_connected_components, labels = connected_components(nbg)
+    if n_connected_components > 1:
+        # Convert to LIL before modification for efficiency
+        nbg_lil = nbg.tolil()
 
-    #     nbg = _fix_connected_components(
-    #         nbrs_._fit_X,
-    #         graph=nbg_lil,
-    #         n_connected_components=n_connected_components,
-    #         component_labels=labels,
-    #         mode="distance",
-    #         metric=nbrs_.effective_metric_,
-    #         **nbrs_.effective_metric_params_,
-    #     )
+        nbg = _fix_connected_components(
+            nbrs_._fit_X,
+            graph=nbg_lil,
+            n_connected_components=n_connected_components,
+            component_labels=labels,
+            mode="distance",
+            metric=nbrs_.effective_metric_,
+            **nbrs_.effective_metric_params_,
+        )
 
-    #     # Convert fixed graph back to CSR
-    #     nbg = nbg_fixed.tocsr()
+        # Convert fixed graph back to CSR
+        nbg = nbg.tocsr()
 
     dist_matrix_ = shortest_path(nbg, method="auto", directed=False)
 
@@ -182,18 +182,19 @@ def normalised_components_for_vaf(arr, vaf=0.80, n_components=None):
     return num_components / n_components
 
 
-def get_pr_for_subsets_of_neurons(arr, niter=5, linear=True, verbose=False):
+def get_pr_for_subsets_of_neurons(arr, niter=5, linear=True, verbose=False, n_neighbors=15):
     results = []
     for num_neurons in np.arange(5, arr.shape[1] + 1, 10):
         if verbose:
             print(f"Neurons: {num_neurons}")
         prs = []
-        for _ in range(niter):
+        for i, _ in enumerate(range(niter)):
+            print(f"\t{i}")
             random_neurons = np.random.randint(0, arr.shape[1], size=num_neurons)
             if linear:
                 pr = pca_pr(arr[:, random_neurons])
             else:
-                pr = isomap_pr(arr[:10000, random_neurons])
+                pr = isomap_pr(arr[:, random_neurons], n_neighbors=n_neighbors)
             prs.append(pr)
 
         results.append(prs)

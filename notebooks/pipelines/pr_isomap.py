@@ -34,6 +34,7 @@ sessions = [
 
 step_size = 10
 n_iter = 5
+n_neighbors = 5
 
 for session in sessions:
 
@@ -41,7 +42,7 @@ for session in sessions:
     df = pyal.load_pyaldata(data_dir + session[:4] + "/" + session)
     df = preprocess(df, only_trials=False)
 
-    for area in areas:
+    for area in areas[:1]:
         print(f"Processing area {area}")
 
         isomap_prs[session][area] = {}
@@ -53,6 +54,8 @@ for session in sessions:
             if condition == "free":
 
                 for idx, label in enumerate(["free0", "free1"]):
+                    print(f"\t\t{label}")
+
                     isomap_prs[session][area][f"{label}"] = {}
 
                     rates = tmp_df[f"{area}_rates"].values[idx]
@@ -61,7 +64,13 @@ for session in sessions:
                         5, rates.shape[1] + 1, step_size
                     )
                     isomap_prs[session][area][f"{label}"]["PR"] = (
-                        get_pr_for_subsets_of_neurons(rates, niter=n_iter, linear=False)
+                        get_pr_for_subsets_of_neurons(
+                            rates,
+                            niter=n_iter,
+                            linear=False,
+                            n_neighbors=n_neighbors,
+                            verbose=True,
+                        )
                     )
 
             elif condition == "trial":
@@ -75,7 +84,7 @@ for session in sessions:
                     5, rates.shape[1] + 1, step_size
                 )
                 isomap_prs[session][area][condition]["PR"] = get_pr_for_subsets_of_neurons(
-                    rates, niter=n_iter, linear=False
+                    rates, niter=n_iter, linear=False, n_neighbors=n_neighbors
                 )
 
             elif condition == "intertrial":
@@ -86,7 +95,7 @@ for session in sessions:
                     5, rates.shape[1] + 1, step_size
                 )
                 isomap_prs[session][area][condition]["PR"] = get_pr_for_subsets_of_neurons(
-                    rates, niter=n_iter, linear=False
+                    rates, niter=n_iter, linear=False, n_neighbors=n_neighbors
                 )
 
 del df
