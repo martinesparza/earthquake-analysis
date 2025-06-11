@@ -25,7 +25,7 @@ def format_curbd_output(curbd_arr, curbd_labels, n_regions, reset_points):
                     if point != 0:
                         new_row[neuron].append(curr[reset_points[p - 1]:point])
 
-            # new_row = np.array(new_row)
+            new_row = np.array(new_row)
             all_currents.append(new_row)
 
     all_currents_labels = curbd_labels.flatten()

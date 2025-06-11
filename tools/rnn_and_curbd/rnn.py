@@ -157,6 +157,63 @@ def rescale_array(arr):
 
     return (arr - arr_min) / (arr_max - arr_min)
 
+def process_pyal_M044_files(pyal_files: Union[str, List[str]], rnn_model, root_dir: str = "/data/raw") -> dict:
+    if isinstance(pyal_files, str):
+        pyal_files = [pyal_files]
+
+    dfs = []
+    for pyal_file in pyal_files:
+        # Extract subject ID and session ID
+        subject_id = pyal_file.split("_")[0]
+        session_id = "_".join(pyal_file.split("_")[1:-1])  # everything between subject and 'pyaldata.mat'
+        
+        # Construct full path: /data/raw/<subject>/<session>/<file>
+        data_dir = os.path.join(root_dir, subject_id, f"{subject_id}_{session_id}")
+        fname = os.path.join(data_dir, pyal_file)
+
+        df = pyal.mat2dataframe(fname, shift_idx_fields=True)
+        dfs.append(df)
+
+    # Combine and preprocess - custom for M044 session
+    df = pd.concat(dfs, ignore_index=True)
+    df_ = preprocess(df, only_trials=True)
+    areas = ["M1_rates", "Dls_rates"]
+    df_["M1_rates"] = [df_["all_rates"][i][:,300:] for i in range(len(df_))]
+    df_["Dls_rates"] = [df_["all_rates"][i][:,0:300] for i in range(len(df_))]
+
+    # Metadata
+    areas = [col for col in df_.columns if col.endswith("_rates") and col != "all_rates"]
+    # perturbation time
+    perturbation_time = df_.idx_sol_on[0]
+    perturbation_time_sec = df_.idx_sol_on[0] * df_['bin_size'][0]
+    # solenoids
+    sol_angles = df_.values_Sol_direction.unique()
+    sol_angles.sort()
+    trial_labels = [f"solenoid {angle}" for angle in sol_angles]
+    trial_avg_rates = average_by_trial(df_, sol_angles)
+    shapes = [arr.shape[0] for arr in trial_avg_rates]
+
+    # do trial avg
+    trial_avg_rates = average_by_trial(df_, sol_angles)
+    concat_rates = np.concatenate(trial_avg_rates, axis=0)
+    trial_avg_activity = np.transpose(concat_rates)
+    reset_points = get_reset_points(df_, trial_avg_activity, areas, rnn_model['params']['dtFactor'])
+    regions_arr = get_regions(df_, areas)
+
+    return {
+        'df_': df_,
+        'sol_angles': sol_angles,
+        'trial_labels': trial_labels,
+        'trial_avg_rates': trial_avg_rates,
+        'shapes': shapes,
+        'areas': areas,
+        'concat_rates': concat_rates,
+        'reset_points': reset_points,
+        'regions_arr': regions_arr,
+        'perturbation_time': perturbation_time,
+        'perturbation_time_sec': perturbation_time_sec
+    }
+
 def process_pyal_M061_M062_files(pyal_files: Union[str, List[str]], rnn_model, root_dir: str = "/data/raw") -> dict:
     if isinstance(pyal_files, str):
         pyal_files = [pyal_files]
