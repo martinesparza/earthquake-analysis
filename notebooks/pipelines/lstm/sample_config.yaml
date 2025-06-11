@@ -1,0 +1,70 @@
+
+
+# LSTM Experiment Configuration
+
+experiment_name: "lstm_experiment_1"
+
+# Data configuration
+data:
+  session_name: "M062_2025_03_21_14_00"
+  batch_size: 64
+  sequence_length: 20  # Number of time steps in each input sequence
+  input_dim: 20         # Number of input features (e.g., 20 dimensions)
+  output_dim: 3         # Number of output dimensions (e.g., predicting 3 values)
+  shuffle: true         # Shuffle the dataset before each epoch
+  normalization: true   # Whether to normalize input data (True/False)
+  augmentation: false   # Data augmentation (if applicable)
+
+# Model configuration
+model:
+  type: "LSTM"  # Model type (e.g., LSTM, GRU, etc.)
+  input_size: 20
+  hidden_size: 64
+  num_layers: 2
+  dropout: 0.2   # Dropout rate to prevent overfitting
+  bidirectional: false  # Whether to use a bidirectional LSTM
+  activation_function: "relu"  # Activation function for the output layer
+  output_activation: "linear"  # Activation function for the output layer (e.g., "sigmoid", "linear")
+
+# Training configuration
+training:
+  epochs: 50  # Number of training epochs
+  learning_rate: 0.001  # Initial learning rate
+  optimizer: "adam"  # Optimizer (e.g., adam, sgd, rmsprop)
+  lr_scheduler: "StepLR"  # Learning rate scheduler type (e.g., "StepLR", "CosineAnnealingLR")
+  lr_scheduler_params:
+    step_size: 10  # Number of epochs after which the learning rate is reduced
+    gamma: 0.1     # Factor by which the learning rate will be reduced
+  weight_decay: 1e-5  # L2 regularization (weight decay)
+  momentum: 0.9  # Momentum for SGD optimizer (if using SGD)
+  grad_clip: 1.0  # Gradient clipping value to prevent exploding gradients
+  early_stopping:
+    enabled: true  # Enable early stopping based on validation loss
+    patience: 5    # Number of epochs to wait before stopping if no improvement
+  resume_training: false  # Whether to resume training from a checkpoint
+
+# Loss function configuration
+loss:
+  type: "mse"  # Loss function type (e.g., "mse" for mean squared error, "crossentropy" for classification)
+  reduction: "mean"  # Reduction method (e.g., "mean", "sum")
+
+# Logging and checkpoints
+logging:
+  log_interval: 10  # Number of batches after which to log the training loss
+  checkpoint_interval: 5  # Save a checkpoint every `checkpoint_interval` epochs
+  save_best_model: true  # Save the model with the best validation performance
+  log_dir: "./logs"  # Directory to store logs and checkpoints
+
+# Evaluation configuration
+evaluation:
+  validation_split: 0.2  # Fraction of data used for validation
+  evaluation_metric: "accuracy"  # Metric to evaluate the model (e.g., "accuracy", "mse")
+  early_stop_metric: "val_loss"  # Metric used to monitor early stopping (e.g., "val_loss", "val_accuracy")
+  test_set: "test_data.csv"  # Optional: path to a test dataset for final evaluation
+
+# Hardware configuration
+hardware:
+  use_cuda: true  # Whether to use GPU (set to false for CPU)
+  device: "cuda"  # Device to use ("cuda" for GPU, "cpu" for CPU)
+  num_workers: 4  # Number of workers for data loading
+  pin_memory: true  # Whether to pin memory for faster data transfer to GPU

@@ -4,7 +4,45 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pyaldata as pyal
+from scipy.ndimage import gaussian_filter1d
 from sklearn.decomposition import PCA
+
+
+def _smooth_data(arr, sigma=1):
+    norm_arr = gaussian_filter1d(arr, sigma=sigma, axis=0)
+    return norm_arr
+
+
+def _find_number_timepoints(df, field, epoch):
+    if epoch is not None:
+        df = pyal.restrict_to_interval(df, epoch_fun=epoch)
+    n_timepoints = int(df[field][0].shape[0])
+    return n_timepoints
+
+
+def _find_number_shared_trial(data_list, target_ids, trial_cat, epoch):
+    n_shared_trial = np.inf
+    for df in data_list:
+        if epoch is not None:
+            df = pyal.restrict_to_interval(df, epoch_fun=epoch)
+        for target in target_ids:
+            df_ = pyal.select_trials(df, df[trial_cat] == target)
+            n_shared_trial = np.min((df_.shape[0], n_shared_trial))
+    n_shared_trial = int(n_shared_trial)
+    return n_shared_trial
+
+
+def _get_bhv_dims(df: pd.DataFrame, bhv: list):
+    """Get the number of behavioural dimensions in a dataframe
+
+    Args:
+        df (pd.DataFrame): data
+        bhv (list): List of keypoints / angles
+
+    Returns:
+        int: number of dimensions
+    """
+    return np.column_stack(df[bhv].values[0]).shape[1]
 
 
 def reshape_to_trials(signal_1d, trial_length_samples):
@@ -27,10 +65,13 @@ def get_data_array(
     data_list: list[pd.DataFrame],
     trial_cat="values_Sol_direction",
     epoch: Callable = None,
-    area: str = "M1",
+    area: str = "MOp",
     units: Callable = None,
     model: Callable = "pca",
     n_components: int = 10,
+    bhv: None | list = None,
+    norm_bhv: bool = True,
+    sigma: float = 1.0,
 ) -> np.ndarray:
     """
     Applies the `model` to the `data_list` and return a data matrix of the shape: sessions x targets x trials x time x modes
@@ -70,32 +111,42 @@ def get_data_array(
             "Invalid model specified. Choose 'isomap', 'pca', or specify number of components for PCA."
         )
 
+    # Definitions
     field = f"{area}_rates"
-
-    n_shared_trial = np.inf
     target_ids = np.unique(data_list[0][trial_cat])
-
-    for df in data_list:
-        for target in target_ids:
-            df_ = pyal.select_trials(df, df[trial_cat] == target)
-            n_shared_trial = np.min((df_.shape[0], n_shared_trial))
-    n_shared_trial = int(n_shared_trial)
-
-    # finding the number of timepoints
-    # print(len(data_list))
-    if epoch is not None:
-        # print(data_list[0]["MOp_rates"][0].shape)
-        df_ = pyal.restrict_to_interval(data_list[0], epoch_fun=epoch)
-    n_timepoints = int(df_[field][0].shape[0])
+    n_shared_trial = _find_number_shared_trial(data_list, target_ids, trial_cat, epoch)
+    n_timepoints = _find_number_timepoints(data_list[0], epoch=epoch, field=field)
 
     # pre-allocating the data matrix
     AllData = np.empty(
         (len(data_list), len(target_ids), n_shared_trial, n_timepoints, model.n_components)
     )
+    if bhv is not None:
+        bhv_dims = _get_bhv_dims(data_list[0], bhv)
+        AllBhv = np.empty(
+            (len(data_list), len(target_ids), n_shared_trial, n_timepoints, bhv_dims)
+        )
 
+    # Begin processing sessions
     rng = np.random.default_rng(12345)
     for session, df in enumerate(data_list):
+
+        if bhv is not None:
+            # Add behaviour
+            df = add_bhv(df, bhv)
+
+            # Interpolate nans
+            # for trial in range(len(df)):
+            #     df["bhv"][trial] = interpolate_nans(df["bhv"][trial])
+
+            # Normalise behaviour
+            if norm_bhv:
+                df["bhv"] = [_smooth_data(bhv_arr, sigma=sigma) for bhv_arr in df["bhv"]]
+
+        # Restrict to interval
         df_ = pyal.restrict_to_interval(df, epoch_fun=epoch) if epoch is not None else df
+
+        # Apply dim reduction
         if f"{area}_pca" not in df_.columns:
             rates = np.concatenate(df_[field].values, axis=0)
             if units is not None:
@@ -104,23 +155,29 @@ def get_data_array(
             df_ = pyal.apply_dim_reduce_model(df_, rates_model, field, pca_field)
         else:
             pca_field = f"{area}_pca"
+
+        # Populate general array
         for targetIdx, target in enumerate(target_ids):
             df__ = pyal.select_trials(df_, df_[trial_cat] == target)
             all_id = df__.trial_id.to_numpy()
-            # to guarantee shuffled ids
-            while ((all_id_sh := rng.permutation(all_id)) == all_id).all():
-                continue
-            all_id = all_id_sh
+            rng.shuffle(all_id)  # shuffle ids
+
             df__ = pyal.select_trials(
                 df__, lambda trial: trial.trial_id in all_id[:n_shared_trial]
             )
-            for trial, trial_rates in enumerate(df__[pca_field]):
-                AllData[session, targetIdx, trial, :, :] = trial_rates
 
-    return AllData
+            # Convert lists to NumPy arrays for vectorised assignment
+            trial_rates_array = np.stack(df__[pca_field].to_list(), axis=0)
+            AllData[session, targetIdx, : len(trial_rates_array), :, :] = trial_rates_array
+
+            if bhv is not None:
+                trial_bhv_array = np.stack(df__["bhv"].to_list(), axis=0)
+                AllBhv[session, targetIdx, : len(trial_bhv_array), :, :] = trial_bhv_array
+
+    return (AllData,) if bhv is None else (AllData, AllBhv)
 
 
-rng = np.random.default_rng(12345)
+# rng = np.random.default_rng(12345)
 
 
 def add_bhv(trial_data, bhv_fields=["all"]):
@@ -327,6 +384,7 @@ def get_data_array_and_pos(
         (len(data_list), n_targets, n_shared_trial, n_timepoints, n_components)
     )
     AllVel = np.empty((len(data_list), n_targets, n_shared_trial, n_timepoints, n_outputs))
+    rng = np.random.default_rng(12345)
 
     for target in target_ids:
         df_ = pyal.select_trials(df, df[trial_cat] == target)
