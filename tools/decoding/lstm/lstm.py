@@ -5,15 +5,29 @@ import numpy as np
 import pandas as pd
 import pyaldata as pyal
 import torch
-from sklearn.metrics import r2_score
+from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.model_selection import KFold
 from torch.utils.data import DataLoader, Dataset
 
 import tools.dataTools as dt
+from tools.decoding.lstm.eval import custom_r2_func
 from tools.decoding.lstm.preprocess import create_sliding_windows, unroll_data
-from tools.decoding.lstm.viz import plot_trial_lstm_example
+from tools.decoding.lstm.viz import (
+    plot_top_trials_lstm_example,
+    plot_trial_lstm_example,
+)
 from tools.dsp.preprocessing import preprocess
 from tools.params import Params
+
+
+def _get_similarity_metrics(metric: str):
+    if metric == "r2":
+        similarity_metric = r2_score
+    elif metric == "mse":
+        similarity_metric = mean_squared_error
+    else:
+        raise ValueError(f"Metrics {metric} not available")
+    return similarity_metric
 
 
 def _baseline_norm_labels(train_labels: np.ndarray, test_labels: np.ndarray):
@@ -48,41 +62,49 @@ def _baseline_norm_labels(train_labels: np.ndarray, test_labels: np.ndarray):
     return train_labels, test_labels
 
 
-def _compute_moving_window_r2(
-    predictions, labels, bhv_outputs, window_data, len_window, trial_length, r2_window=10
+def _compute_moving_window_similarity(
+    predictions,
+    labels,
+    bhv_outputs,
+    window_data,
+    data_window,
+    trial_length,
+    testing_window=10,
+    similarity_metric=mean_squared_error,
 ):
-    r2_per_output = {}
+
+    similarity_per_output = {}
 
     if window_data:
-        labels = unroll_data(labels, trial_length=int(trial_length - len_window))
-        predictions = unroll_data(predictions, trial_length=int(trial_length - len_window))
+        labels = unroll_data(labels, trial_length=int(trial_length - data_window))
+        predictions = unroll_data(predictions, trial_length=int(trial_length - data_window))
 
     n_trials, n_time_, n_dims = predictions.shape
     col_counter = 0
     for output in bhv_outputs:
-        r2_list = []
+        sim_list = []
         for label_trial, pred_trial in zip(labels, predictions):
-            r2_trial_list = []
-            for t in range(n_time_ - r2_window):
+            sim_trial_list = []
+            for t in range(n_time_ - testing_window):
                 if "angle" not in output:
-                    r2 = r2_score(
-                        label_trial[t : t + r2_window, col_counter : col_counter + 3],
-                        pred_trial[t : t + r2_window, col_counter : col_counter + 3],
+                    similarity = similarity_metric(
+                        label_trial[t : t + testing_window, col_counter : col_counter + 3],
+                        pred_trial[t : t + testing_window, col_counter : col_counter + 3],
                     )
                 else:
-                    r2 = r2_score(
-                        label_trial[t : t + r2_window, col_counter : col_counter + 1],
-                        pred_trial[t : t + r2_window, col_counter : col_counter + 1],
+                    similarity = similarity_metric(
+                        label_trial[t : t + testing_window, col_counter : col_counter + 1],
+                        pred_trial[t : t + testing_window, col_counter : col_counter + 1],
                     )
 
-                r2_trial_list.append(r2)
-            r2_list.append(np.array(r2_trial_list))
-        r2_per_output[output] = np.array(r2_list)  # trials x time
+                sim_trial_list.append(similarity)
+            sim_list.append(np.array(sim_trial_list))
+        similarity_per_output[output] = np.array(sim_list)  # trials x time
         if "angle" not in output:
             col_counter = col_counter + 3
         else:
             col_counter = col_counter + 1
-    return r2_per_output
+    return similarity_per_output
 
 
 def _compute_agg_r2(predictions, labels, bhv_outputs):
@@ -94,11 +116,18 @@ def _compute_agg_r2(predictions, labels, bhv_outputs):
     labels_flat = labels.reshape(-1, n_outputs)  # (batch * seq_len, n_outputs)
 
     r2_per_output = {}
+    custom_r2_per_output = {}
+
     col_counter = 0
     for output in bhv_outputs:
         if "angle" not in output:
             # Use x,y,z variance weighted
             r2_per_output[output] = r2_score(
+                labels_flat[:, col_counter : col_counter + 3],
+                preds_flat[:, col_counter : col_counter + 3],
+                multioutput="variance_weighted",
+            )
+            custom_r2_per_output[output] = custom_r2_func(
                 labels_flat[:, col_counter : col_counter + 3],
                 preds_flat[:, col_counter : col_counter + 3],
                 multioutput="variance_weighted",
@@ -110,9 +139,13 @@ def _compute_agg_r2(predictions, labels, bhv_outputs):
                 labels_flat[:, col_counter : col_counter + 1],
                 preds_flat[:, col_counter : col_counter + 1],
             )
+            custom_r2_per_output[output] = custom_r2_func(
+                labels_flat[:, col_counter : col_counter + 1],
+                preds_flat[:, col_counter : col_counter + 1],
+            )
             col_counter = col_counter + 1
 
-    return r2_per_output
+    return r2_per_output, custom_r2_per_output
 
 
 def _get_trialdata_and_labels_from_df(df, bhv, area, n_components, epoch, sigma):
@@ -259,6 +292,13 @@ class KeypointsLSTM:
         Returns:
             _type_: _description_
         """
+        if epoch is not None:
+            epoch = pyal.generate_epoch_fun(
+                start_point_name="idx_sol_on",
+                rel_start=int(epoch[0] / df.bin_size.values[0]),
+                rel_end=int(epoch[1] / df.bin_size.values[0]),
+            )
+
         if condition == "trial":
             data, labels = _get_trialdata_and_labels_from_df(
                 df, self.outputs, area, self.n_input_components, epoch, self.sigma
@@ -331,17 +371,15 @@ class KeypointsLSTM:
         area: str,
         condition: str,
         k: int = 5,
-        save_example=False,
-        epoch: Callable[[pd.Series], slice] = Params.perturb_epoch_long,
+        epoch: list = [-1, 3],
+        similarity_metric=mean_squared_error,
         baseline_norm_labels: bool = True,
         window_data: bool = True,
         len_window: int = 20,
         n_print_epoch: int = 250,
         results_dir: str | None = None,
-        r2_window: int = 10,
+        testing_window: int = 10,
         plot_example: bool = False,
-        plot_epoch: list = [-1, 3],
-        trial_length: int | None = None,
     ):
         """Kfold cross validation
 
@@ -365,13 +403,19 @@ class KeypointsLSTM:
             len_window=len_window,
         )
 
+        # trial_length
+        trial_length = int(
+            np.ceil(epoch[1] / df.bin_size.values[0] - epoch[0] / df.bin_size.values[0]),
+        )
+
+        # Folds
         kf = KFold(n_splits=k, shuffle=False)
-        r2 = {}
-        r2_agg = {}
-        r2_moving_window = {}
+
+        # General r2s
+        results = {"agg_r2": {}, "agg_custom_r2": {}, "windowed_similarity": {}}
 
         for fold, (train_idx, test_idx) in enumerate(kf.split(data)):
-            print(f"Fold {fold}\n-----------------------------------")
+            print(f"Fold {fold}")
             self.model = BaseLSTM(
                 input_size=self.n_input_components,
                 hidden_size=self.hidden_size,
@@ -398,39 +442,38 @@ class KeypointsLSTM:
             )
             self.train(n_print_epoch)
             preds_, labels_ = self.predict()
-            r2_agg[fold] = _compute_agg_r2(preds_, labels_, self.outputs)
-            r2_moving_window[fold] = _compute_moving_window_r2(
-                preds_,
-                labels_,
-                self.outputs,
-                window_data,
-                len_window,
-                trial_length,
-                r2_window,
+            results["agg_r2"][fold], results["agg_custom_r2"][fold] = _compute_agg_r2(
+                preds_, labels_, self.outputs
             )
-            print(f"R2: {r2_agg[fold]}")
-
-        r2["agg"] = r2_agg
-        r2["window"] = r2_moving_window
-
-        if save_example:
-            self.example_preds = preds_
-            self.example_labels = labels_
+            results["windowed_similarity"][fold] = _compute_moving_window_similarity(
+                predictions=preds_,
+                labels=labels_,
+                bhv_outputs=self.outputs,
+                window_data=window_data,
+                data_window=len_window,
+                trial_length=trial_length,
+                testing_window=testing_window,
+                similarity_metric=similarity_metric,
+            )
+            print(
+                f"R2: {results["agg_r2"][fold]}\n--------------------------------------------------------------------"
+            )
 
         if plot_example:
             if window_data:
                 labels_ = unroll_data(labels_, trial_length=int(trial_length - len_window))
                 preds_ = unroll_data(preds_, trial_length=int(trial_length - len_window))
 
-            plot_trial_lstm_example(
+            plot_top_trials_lstm_example(
                 preds_,
                 labels_,
                 area,
+                perturb_onset=int(abs(epoch[0] / df.bin_size.values[0])),
+                n_trials_to_plot=1,
                 results_dir=results_dir,
                 keypoints=self.outputs,
-                bin_size=df.bin_size.values[0],
             )
-        return r2
+        return results
 
 
 def run_experiment(cfg: dict):
@@ -441,12 +484,7 @@ def run_experiment(cfg: dict):
     )
     df = preprocess(df, only_trials=False, combine_time_bins=cfg["data"]["combine_time_bins"])
 
-    WINDOW_perturb = cfg["data"]["epoch"]
-    epoch = pyal.generate_epoch_fun(
-        start_point_name="idx_sol_on",
-        rel_start=int(WINDOW_perturb[0] / df.bin_size.values[0]),
-        rel_end=int(WINDOW_perturb[1] / df.bin_size.values[0]),
-    )
+    similarity_metric = _get_similarity_metrics(cfg["results"]["similarity_metric"])
 
     model = KeypointsLSTM(
         n_input_components=cfg["model"]["input_dim"],
@@ -467,19 +505,14 @@ def run_experiment(cfg: dict):
             area=area,
             condition=cfg["training"]["condition"],
             k=cfg["training"]["k"],
-            save_example=False,  # TODO
-            epoch=epoch,
+            epoch=cfg["data"]["epoch"],
+            similarity_metric=similarity_metric,
             window_data=cfg["training"]["window_data"],
             len_window=cfg["training"]["len_window"],
             n_print_epoch=cfg["training"]["n_print_epoch"],
             results_dir=cfg["results"]["results_dir"],
-            r2_window=cfg["results"]["r2_window"],
+            testing_window=cfg["results"]["testing_window"],
             plot_example=cfg["results"]["plot_example"],
-            plot_epoch=cfg["data"]["epoch"],
-            trial_length=np.ceil(
-                WINDOW_perturb[1] / df.bin_size.values[0]
-                - WINDOW_perturb[0] / df.bin_size.values[0]
-            ),
         )
 
     if cfg["results"]["results_dir"] is not None:

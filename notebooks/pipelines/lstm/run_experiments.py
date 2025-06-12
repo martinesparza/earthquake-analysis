@@ -17,26 +17,20 @@ from tools.decoding.lstm.lstm import run_experiment
 
 
 # Set up logging
-def setup_logger(log_file="application.log"):
-    # Create a custom logger
-    logger = logging.getLogger("my_logger")
+def setup_logger():
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
 
-    # Set the log level to DEBUG to capture all levels of logs (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-    logger.setLevel(logging.DEBUG)
+    # Clear existing handlers
+    for handler in logger.handlers:
+        logger.removeHandler(handler)
 
-    # Create handlers (one for console output, one for file)
+    # Create a new stream handler for the console output
     console_handler = logging.StreamHandler(sys.stdout)
-    file_handler = logging.FileHandler(log_file, mode="w")
-
-    # Set the logging format
-    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    console_handler.setFormatter(formatter)
-    file_handler.setFormatter(formatter)
-
-    # Add the handlers to the logger
+    console_handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    )
     logger.addHandler(console_handler)
-    logger.addHandler(file_handler)
-
     return logger
 
 
@@ -81,7 +75,7 @@ def load_config(config_path):
     return config
 
 
-def run_experiments(cfg: dict):
+def run_experiments(cfg: dict, logger: logging.Logger):
     # breakpoint()
 
     for exp_cfg in cfg["experiments"]:
@@ -89,8 +83,16 @@ def run_experiments(cfg: dict):
         # Create results directory
         os.makedirs(exp_cfg["results"]["results_dir"], exist_ok=True)
 
-        # Setup logger
-        logger = setup_logger(exp_cfg["logging"]["log_dir"])
+        # Remove existing file handler (if any) and add a new one for the current log file
+        for handler in logger.handlers:
+            if isinstance(handler, logging.FileHandler):
+                logger.removeHandler(handler)
+
+        file_handler = logging.FileHandler(exp_cfg["logging"]["log_dir"], mode="w")
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        )
+        logger.addHandler(file_handler)
 
         # Capture warnings and redirect them to the logger
         def custom_warning_handler(message, category, filename, lineno, file=None, line=None):
@@ -98,14 +100,11 @@ def run_experiments(cfg: dict):
 
         warnings.showwarning = custom_warning_handler
 
+        # Logger printing
         sys.stdout = PrintToLogger(logger)
 
         logger.info(f"Running experiments: {exp_cfg['name']}, {exp_cfg['description']}")
         run_experiment(exp_cfg)
-        # for handler in logger.handlers[:]:
-        #     logger.removeHandler(handler)
-        #     handler.close()  # Optionally close the handler if needed
-        # del logger
 
     return
 
@@ -117,7 +116,10 @@ def main():
     # Load the configuration file
     config = load_config(args.config)
 
-    run_experiments(config)
+    # Set up the logger
+    logger = setup_logger()
+
+    run_experiments(config, logger)
 
     return
 
