@@ -4,6 +4,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 from sklearn.metrics import r2_score
 
+from .preprocess import unroll_data
+
 
 def plot_trial_lstm_example(
     preds,
@@ -33,8 +35,28 @@ def plot_trial_lstm_example(
 
 
 def plot_top_trials_lstm_example(
-    preds, labels, area, keypoints, results_dir, perturb_onset, n_trials_to_plot: int = 2
+    preds,
+    labels,
+    area,
+    keypoints,
+    results_dir,
+    perturb_onset,
+    epoch,
+    bin_size,
+    window_data,
+    data_window,
+    n_trials_to_plot: int = 2,
 ):
+
+    # trial_length
+    trial_length = int(
+        np.ceil(epoch[1] / bin_size - epoch[0] / bin_size[0]),
+    )
+
+    if window_data:
+        labels = unroll_data(labels, trial_length=int(trial_length - data_window))
+        predictions = unroll_data(predictions, trial_length=int(trial_length - data_window))
+
     os.makedirs(results_dir + "plots", exist_ok=True)
     times = np.arange(preds.shape[1])
 

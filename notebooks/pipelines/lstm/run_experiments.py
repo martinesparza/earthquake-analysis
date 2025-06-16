@@ -12,8 +12,7 @@ import yaml
 
 sys.path.append("../../../")
 
-
-from tools.decoding.lstm.lstm import run_experiment
+from tools.decoding.lstm import run_lstm_experiment
 
 
 # Set up logging
@@ -104,7 +103,7 @@ def run_experiments(cfg: dict, logger: logging.Logger):
         sys.stdout = PrintToLogger(logger)
 
         logger.info(f"Running experiments: {exp_cfg['name']}, {exp_cfg['description']}")
-        run_experiment(exp_cfg)
+        run_lstm_experiment(exp_cfg)
 
     return
 

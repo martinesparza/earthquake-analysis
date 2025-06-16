@@ -1,97 +1,134 @@
 
 experiments:
-  - name: "experiment_1"
-    description: "No windowing - seq-to-seq"
-    data:
-      data_dir: "/data/bnd-data/raw/"
-      session: "M062_2025_03_21_14_00"
-      epoch: [-2, 3.5]
-      combine_time_bins: true
-      sigma: 1
-    model:
-      hidden_size: 300
-      num_layers: 2
-      input_dim: 20
-      outputs: ["right_knee", "left_knee", "hip_center"]
-      dropout: 0.1
-    training:
-      learning_rate: 0.001
-      batch_size: 1024
-      epochs: 7500
-      condition: 'trial'
-      areas: ['MOp', 'CP', 'SSp', 'VAL']
-      window_data: false
-      len_window: 5
-      k: 5
-      n_print_epoch: 1000
-    results:
-      testing_window: 1
-      results_dir: "/home/me24/repos/earthquake-analysis/results/lstm/experiment_1/"
-      plot_example: true
-      similarity_metric: 'mse'
-    logging:
-      log_dir: "/home/me24/repos/earthquake-analysis/results/lstm/experiment_1/experiment_1.log"
+  # - name: "experiment_1"
+  #   description: "No windowing - seq-to-seq"
+  #   data:
+  #     data_dir: "/data/bnd-data/raw/"
+  #     session: "M062_2025_03_21_14_00"
+  #     epoch: [-2, 3.5]
+  #     combine_time_bins: true
+  #     sigma: 1
+  #   model:
+  #     hidden_size: 300
+  #     num_layers: 2
+  #     input_dim: 20
+  #     outputs: ["right_knee", "left_knee", "hip_center"]
+  #     dropout: 0.1
+  #   training:
+  #     learning_rate: 0.001
+  #     batch_size: 1024
+  #     epochs: 7500
+  #     condition: 'trial'
+  #     areas: ['MOp', 'CP', 'SSp', 'VAL']
+  #     window_data: false
+  #     len_window: 5
+  #     k: 5
+  #     n_print_epoch: 1000
+  #   results:
+  #     testing_window: 1
+  #     results_dir: "/home/me24/repos/earthquake-analysis/results/lstm/experiment_1/"
+  #     plot_example: true
+  #     similarity_metric: 'mse'
+  #   logging:
+  #     log_dir: "/home/me24/repos/earthquake-analysis/results/lstm/experiment_1/experiment_1.log"
 
-  - name: "experiment_2"
+  # - name: "experiment_2"
+  #   description: "Windowing - seq-to-point"
+  #   data:
+  #     data_dir: "/data/bnd-data/raw/"
+  #     session: "M062_2025_03_21_14_00"
+  #     epoch: [-2, 3.5]
+  #     combine_time_bins: true
+  #     sigma: 1
+  #   model:
+  #     hidden_size: 300
+  #     num_layers: 2
+  #     input_dim: 20
+  #     outputs: ["right_knee", "left_knee", "hip_center", "shoulder_center"]
+  #     dropout: 0.1
+  #   training:
+  #     learning_rate: 0.001
+  #     batch_size: 1024
+  #     epochs: 7500
+  #     condition: 'trial'
+  #     areas: ['MOp', 'CP', 'SSp', 'VAL']
+  #     window_data: false
+  #     len_window: 5
+  #     k: 5
+  #     n_print_epoch: 100
+  #   results:
+  #     testing_window: 10
+  #     results_dir: "/home/me24/repos/earthquake-analysis/results/lstm/experiment_2/"
+  #     plot_example: true
+  #     similarity_metric: 'mse'
+  #   logging:
+  #     log_dir: "/home/me24/repos/earthquake-analysis/results/lstm/experiment_2/experiment_2.log"
+
+  # - name: "experiment_3"
+  #   description: "Windowing - seq-to-point"
+  #   data:
+  #     data_dir: "/data/bnd-data/raw/"
+  #     session: "M062_2025_03_21_14_00"
+  #     epoch: [-2, 3.5]
+  #     combine_time_bins: true
+  #     sigma: 1
+  #   model:
+  #     hidden_size: 300
+  #     num_layers: 2
+  #     input_dim: 20
+  #     outputs: ["right_knee", "left_knee", "hip_center", "shoulder_center", "right_elbow", "left_elbow"]
+  #     dropout: 0.1
+  #   training:
+  #     learning_rate: 0.001
+  #     batch_size: 1024
+  #     epochs: 7500
+  #     condition: 'trial'
+  #     areas: ['MOp', 'CP', 'SSp', 'VAL']
+  #     window_data: false
+  #     len_window: 5
+  #     k: 5
+  #     n_print_epoch: 250
+  #   results:
+  #     testing_window: 20
+  #     results_dir: "/home/me24/repos/earthquake-analysis/results/lstm/experiment_3/"
+  #     plot_example: true
+  #     similarity_metric: 'mse'
+  #   logging:
+  #     log_dir: "/home/me24/repos/earthquake-analysis/results/lstm/experiment_3/experiment_3.log"
+
+  - name: "experiment_4"
     description: "Windowing - seq-to-point"
     data:
       data_dir: "/data/bnd-data/raw/"
       session: "M062_2025_03_21_14_00"
-      epoch: [-2, 3.5]
       combine_time_bins: true
+      bin_size: 0.01
+    preprocess:
+      epoch: [-1 , 3.5]
       sigma: 1
-    model:
-      hidden_size: 300
-      num_layers: 2
-      input_dim: 20
-      outputs: ["right_knee", "left_knee", "hip_center", "shoulder_center"]
-      dropout: 0.1
-    training:
-      learning_rate: 0.001
-      batch_size: 1024
-      epochs: 7500
-      condition: 'trial'
-      areas: ['MOp', 'CP', 'SSp', 'VAL']
+      condition: "trial"
+      area: "MOp"
+      bhv: ["right_knee"]
+      n_input_dims: 20
       window_data: false
       len_window: 5
-      k: 5
-      n_print_epoch: 100
-    results:
-      testing_window: 10
-      results_dir: "/home/me24/repos/earthquake-analysis/results/lstm/experiment_2/"
-      plot_example: true
-      similarity_metric: 'mse'
-    logging:
-      log_dir: "/home/me24/repos/earthquake-analysis/results/lstm/experiment_2/experiment_2.log"
-
-  - name: "experiment_3"
-    description: "Windowing - seq-to-point"
-    data:
-      data_dir: "/data/bnd-data/raw/"
-      session: "M062_2025_03_21_14_00"
-      epoch: [-2, 3.5]
-      combine_time_bins: true
-      sigma: 1
     model:
+      n_input_dims: 20
       hidden_size: 300
       num_layers: 2
-      input_dim: 20
-      outputs: ["right_knee", "left_knee", "hip_center", "shoulder_center", "right_elbow", "left_elbow"]
       dropout: 0.1
+      batch_first: true
+      device: 'cuda'
     training:
-      learning_rate: 0.001
+      lr: 0.001
+      loss: 'mse'
+      optimizer: 'adam'
+      n_epochs: 4000
       batch_size: 1024
-      epochs: 7500
-      condition: 'trial'
-      areas: ['MOp', 'CP', 'SSp', 'VAL']
-      window_data: false
-      len_window: 5
-      k: 5
       n_print_epoch: 250
-    results:
+      k_folds: 5
+    eval:
       testing_window: 20
-      results_dir: "/home/me24/repos/earthquake-analysis/results/lstm/experiment_3/"
       plot_example: true
-      similarity_metric: 'mse'
-    logging:
-      log_dir: "/home/me24/repos/earthquake-analysis/results/lstm/experiment_3/experiment_3.log"
+    results:
+      results_dir: "/home/me24/repos/earthquake-analysis/results/lstm/experiment_4"
