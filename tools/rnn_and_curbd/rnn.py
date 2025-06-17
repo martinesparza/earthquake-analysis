@@ -281,3 +281,9 @@ def process_pyal_M061_M062_files(pyal_files: Union[str, List[str]], rnn_model, r
         'bin_size': BIN_SIZE
     }
 
+def restrict_time_interval(df, brain_areas, bin_start, length):
+    interval_df = df.copy()
+    interval_df[brain_areas] = df[brain_areas].apply(lambda row: row.apply(lambda arr: arr[bin_start:bin_start+length, :]))
+    interval_df['trial_length'] = length
+    return interval_df
+
