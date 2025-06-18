@@ -39,6 +39,33 @@ def average_by_trial(df, trial_categories, trial_col_name='values_Sol_direction'
 
     return averaged_activity
 
+def average_by_categories(df, trial_categories_direction, trial_categories_duration, trial_col_name_direction='values_Sol_direction', trial_col_name_duration='values_Sol_duration'):
+    if not isinstance(df['all_rates'].iloc[0], np.ndarray):
+        df['all_rates'] = df['all_rates'].apply(np.array)
+
+    averaged_activity = []
+    labels = []
+    for cat_dir in trial_categories_direction:
+        for cat_dur in trial_categories_duration:
+            # Group by both direction and duration categories
+            group = df[(df[trial_col_name_direction] == cat_dir) & (df[trial_col_name_duration] == cat_dur)]['all_rates']
+            labels.append(f"{cat_dir}_{cat_dur}")
+            if len(group) > 0:  # Only compute if there's data
+                print(f"\nThere are {len(group)} samples from direction {cat_dir} and duration {cat_dur}")
+                angle_array = np.stack(group.values)
+                mean_activity = np.mean(angle_array, axis=0)
+                averaged_activity.append(mean_activity)
+            else:
+                print(f"No data for direction {cat_dir} and duration {cat_dur}")
+
+    try:
+        averaged_activity_array = np.array(averaged_activity)
+        return averaged_activity_array, labels
+    except ValueError:
+        print("Warning: Averaged arrays have different shapes; returning a list instead.")
+        return averaged_activity, labels
+
+
 def get_reset_points(df, activity, areas, dtFactor):
     trial_len = df[areas[0]][0].shape[0]
     if all(df[col][0].shape[0] == trial_len for col in areas):
