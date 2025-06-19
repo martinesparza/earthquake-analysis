@@ -9,8 +9,7 @@ from tools.curbd import curbd
 def format_curbd_output(curbd_arr, curbd_labels, n_regions, reset_points):
     all_currents = []
     max_len = curbd_arr[0, 0].shape[1]
-    reset_points = [point for point in reset_points if point <= max_len]
-
+    reset_points = [point for point in reset_points if point <= (max_len + reset_points[1])]
     for iTarget in range(n_regions):
         for iSource in range(n_regions):
             num_neurons = curbd_arr[iTarget, iSource].shape[0]
@@ -23,8 +22,11 @@ def format_curbd_output(curbd_arr, curbd_labels, n_regions, reset_points):
                 for p in range(len(reset_points)):
                     point = reset_points[p]
                     if point != 0:
-                        new_row[neuron].append(curr[reset_points[p - 1]:point])
-
+                        data = curr[reset_points[p - 1]:point]
+                        if len(data) < 400:
+                             data = np.pad(data, (0, 400 - len(data)), 'constant')
+                        new_row[neuron].append(data)
+                        
             new_row = np.array(new_row)
             all_currents.append(new_row)
 
