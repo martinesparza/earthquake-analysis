@@ -91,6 +91,7 @@ trial_avg_activity = np.transpose(concat_rates)
 print(f"Averaged activity shape: {trial_avg_activity.shape}")
 reset_points = rnnz.get_reset_points(df_, trial_avg_activity, areas, dtFactor)
 regions_arr = rnnz.get_regions(df_, areas)
+print(reset_points)
 
 print(f"Building RNN with {len(regions_arr)} region(s)")
 print("Regions:", [r[0] for r in regions_arr])
