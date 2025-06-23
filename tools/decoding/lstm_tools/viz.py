@@ -1,37 +1,11 @@
 import os
+from pathlib import Path
 
 import numpy as np
 from matplotlib import pyplot as plt
 from sklearn.metrics import r2_score
 
-from .preprocess import unroll_data
-
-
-def plot_trial_lstm_example(
-    preds,
-    labels,
-    area,
-    keypoints,
-    results_dir,
-    trial_range=np.arange(2),
-):
-    os.makedirs(results_dir + "plots", exist_ok=True)
-    times = np.arange(preds.shape[1])
-    for keypoint in keypoints:
-        for trial in trial_range:
-            fig, axes = plt.subplots(3, 1, sharex="all", figsize=(13, 6))
-            axes[-1].set_xlabel("Time (s)")
-            for i, (dim_, ax) in enumerate(zip(["x", "y", "z"], axes)):
-                ax.plot(times, labels[trial, :, i], label="label")
-                ax.plot(times, preds[trial, :, i], label="pred")
-                r2 = r2_score(
-                    labels[trial, :, i], preds[trial, :, i], multioutput="raw_values"
-                )
-                ax.set_title(f"Area: {area} Keypoint: {keypoint}. R2: {r2}")
-                # ax.axvline(x=0, color="r", linestyle="dashed", label="Perturb. onset")
-                ax.set_ylabel(f"{dim_}")
-            axes[-1].legend()
-            fig.savefig(f"{results_dir}plots/{area}_{keypoint}_{trial}", bbox_inches="tight")
+from .utils import unroll_data
 
 
 def plot_top_trials_lstm_example(
@@ -49,15 +23,12 @@ def plot_top_trials_lstm_example(
 ):
 
     # trial_length
-    trial_length = int(
-        np.ceil(epoch[1] / bin_size - epoch[0] / bin_size[0]),
-    )
+    trial_length = int(np.round(epoch[1] / bin_size - epoch[0] / bin_size))
 
     if window_data:
         labels = unroll_data(labels, trial_length=int(trial_length - data_window))
-        predictions = unroll_data(predictions, trial_length=int(trial_length - data_window))
+        preds = unroll_data(preds, trial_length=int(trial_length - data_window))
 
-    os.makedirs(results_dir + "plots", exist_ok=True)
     times = np.arange(preds.shape[1])
 
     # Loop over each trial in trial_range to compute R² for each trial
@@ -115,7 +86,12 @@ def plot_top_trials_lstm_example(
                 col_counter = col_counter + 1
 
             axes[-1].legend()
+            keypoint_angle_str = "-".join(keypoints)
+
+            folder_path = Path(f"{results_dir}/{keypoint_angle_str}/{area}/plots")
+            folder_path.mkdir(parents=True, exist_ok=True)
             fig.savefig(
-                f"{results_dir}plots/{area}_{keypoint}_trial_{trial}", bbox_inches="tight"
+                folder_path / Path(f"{area}_{keypoint}_trial_{trial}.pdf"),
+                bbox_inches="tight",
             )
             plt.close()

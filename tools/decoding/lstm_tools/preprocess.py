@@ -7,30 +7,6 @@ import pyaldata as pyal
 import tools.dataTools as dt
 
 
-def unroll_data(data, trial_length):
-    """
-    Unrolls a 2D array of shape (time * trials, 3) into shape (trials, time, 3).
-
-    Parameters:
-    - data: 2D numpy array of shape (time * trials, 3)
-    - trial_length: the number of time steps per trial (default: 129)
-
-    Returns:
-    - unrolled_data: 3D numpy array of shape (trials, time, 3)
-    """
-    # Get the number of trials and time steps
-    n_trial = data.shape[0] // trial_length  # Time per trial
-    n_features = data.shape[1]  # Should be 3
-
-    # Reshape the data into (trials, time, features)
-    unrolled_data = data.reshape(n_trial, trial_length, n_features)
-
-    # Transpose to get (trials, time, 3)
-    # unrolled_data = unrolled_data.transpose(1, 0, 2)
-
-    return unrolled_data
-
-
 def create_sliding_windows(data, labels, len_window=20):
     """
     Create sliding windows of data for training, with causal windows and respecting discontinuities across trials.
@@ -138,7 +114,12 @@ def _get_trialdata_and_labels_from_df(
     return data, labels
 
 
-def preprocess(df: pd.DataFrame, cfg: dict) -> tuple:
+def preprocess(
+    df: pd.DataFrame,
+    bhv: list,
+    area: str,
+    cfg: dict,
+) -> tuple:
     """Preprocess data and prepare it for lstm training
 
     Args:
@@ -164,16 +145,13 @@ def preprocess(df: pd.DataFrame, cfg: dict) -> tuple:
         df_trials = pyal.select_trials(df, df.trial_name == "trial")
         data, labels = _get_trialdata_and_labels_from_df(
             df=df_trials,
-            bhv=cfg["bhv"],
-            area=cfg["area"],
+            bhv=bhv,
+            area=area,
             n_components=cfg["n_input_dims"],
             epoch=epoch,
             sigma=cfg["sigma"],
         )
     else:
         raise ValueError(f'Condition: {cfg["condition"]} not implemented yet')
-
-    if cfg["window_data"]:
-        data, labels = create_sliding_windows(data, labels, len_window=cfg["len_window"])
 
     return data, labels

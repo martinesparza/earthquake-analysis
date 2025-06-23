@@ -16,6 +16,21 @@ from tools.params import Params
 from tools.viz import utilityTools as utility
 
 
+def custom_r2_func(y_true, y_pred, multioutput="raw_values"):
+    "$R^2$ value as squared correlation coefficient, as per Gallego, NN 2020"
+    c = np.corrcoef(y_true.T, y_pred.T) ** 2
+    r2s = np.diag(c[-int(c.shape[0] / 2) :, : int(c.shape[1] / 2)])
+
+    if y_true.shape[-1] > 1:
+        if multioutput == "variance_weighted":
+            vars = np.var(y_true, axis=0)
+            r2s = np.average(r2s, weights=vars)
+    else:
+        r2s = r2s[0]
+
+    return r2s
+
+
 def columnwise_r2(Y_true: np.ndarray, Y_pred: np.ndarray) -> np.ndarray:
     ss_res = np.sum((Y_true - Y_pred) ** 2, axis=0)
     ss_tot = np.sum((Y_true - Y_true.mean(axis=0)) ** 2, axis=0)

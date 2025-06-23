@@ -171,6 +171,8 @@ def delayed_rrr_on_df(
 
             results_rrr[area_x][area_y]["vae_r2"] = {}
             results_rrr[area_x][area_y]["pc1_r2"] = {}
+            results_rrr[area_x][area_y]["pc1_custom_r2"] = {}
+            results_rrr[area_x][area_y]["vae_custom_r2"] = {}
 
             for shift in shifts:
 
@@ -180,6 +182,8 @@ def delayed_rrr_on_df(
                 # Initialize R2
                 weighted_r2s = []
                 pc1_r2s = []
+                pc2_custom_r2s = []
+                vae_custom_r2s = []
 
                 for train_index, test_index in kf.split(X):
 
@@ -196,15 +200,24 @@ def delayed_rrr_on_df(
                         Y_test, Y_pred_test, explained_variance_ratios
                     )
                     col_r2 = decutils.columnwise_r2(Y_test, Y_pred_test)
+                    col_custom_r2 = decutils.custom_r2_func(Y_test, Y_pred_test)
+                    vae_custom_r2 = decutils.custom_r2_func(
+                        Y_test, Y_pred_test, multioutput="variance_weighted"
+                    )
 
                     weighted_r2s.append(vae_weighted_r2)
                     pc1_r2s.append(col_r2[0])
+                    pc2_custom_r2s.append(col_custom_r2[0])
+                    vae_custom_r2s.append(vae_custom_r2)
 
                 if verbose:
-                    print(f"{area_x} to {area_y}: {np.array(r2).mean():.3f}")
+                    print(f"{area_x} to {area_y}: {np.array(col_custom_r2[0]).mean():.3f}")
 
                 results_rrr[area_x][area_y]["pc1_r2"][shift] = pc1_r2s
                 results_rrr[area_x][area_y]["vae_r2"][shift] = weighted_r2s
+                results_rrr[area_x][area_y]["pc1_custom_r2"][shift] = pc2_custom_r2s
+                results_rrr[area_x][area_y]["vae_custom_r2"][shift] = vae_custom_r2s
+
     mempool = cp.get_default_memory_pool()
     pinned_mempool = cp.get_default_pinned_memory_pool()
 

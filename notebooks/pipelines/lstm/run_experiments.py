@@ -4,9 +4,10 @@ Module to run pipeline from command line
 
 import argparse
 import logging
-import os
+import shutil
 import sys
 import warnings
+from pathlib import Path
 
 import yaml
 
@@ -15,13 +16,14 @@ sys.path.append("../../../")
 from tools.decoding.lstm import run_lstm_experiment
 
 
-# Set up logging
 def setup_logger():
+    """
+    Setup logger
+    """
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
 
-    # Clear existing handlers
-    for handler in logger.handlers:
+    for handler in logger.handlers:  # Clear existing handlers
         logger.removeHandler(handler)
 
     # Create a new stream handler for the console output
@@ -33,8 +35,11 @@ def setup_logger():
     return logger
 
 
-# Redirect print statements to the logger
 class PrintToLogger:
+    """
+    Class to catch prints and log them
+    """
+
     def __init__(self, logger):
         self.logger = logger
 
@@ -57,7 +62,14 @@ def parse_args():
 
     # Adding the argument for the config file path
     parser.add_argument(
-        "--config", type=str, required=True, help="Path to the YAML configuration file"
+        "--cfg", type=str, required=True, help="Path to the YAML configuration file"
+    )
+
+    parser.add_argument(
+        "--exps",
+        type=str,
+        nargs="+",
+        help="List of experiments (can be a single item or multiple items)",
     )
 
     # Parse arguments
@@ -74,20 +86,39 @@ def load_config(config_path):
     return config
 
 
-def run_experiments(cfg: dict, logger: logging.Logger):
-    # breakpoint()
+def run_experiments(exps: dict, exp_names: str | None, logger: logging.Logger):
+    """Main experiment running routing
 
-    for exp_cfg in cfg["experiments"]:
+    Args:
+        exps (dict): general yaml config
+        exp_names (str | None): specific experiment to run
+        logger (logging.Logger): logger
+    """
+
+    if exp_names is not None:
+        exps = {key: exps[key] for key in exp_names if key in exps}
+        if not exps:
+            print(f"Experiments: {exp_names} dont match any experiment in provided config")
+
+    # if
+    for exp_cfg in exps.values():
 
         # Create results directory
-        os.makedirs(exp_cfg["results"]["results_dir"], exist_ok=True)
+        folder_path = Path(exp_cfg["results"]["results_dir"])
+
+        if folder_path.exists():
+            shutil.rmtree(folder_path)
+
+        folder_path.mkdir(parents=True, exist_ok=True)
 
         # Remove existing file handler (if any) and add a new one for the current log file
         for handler in logger.handlers:
             if isinstance(handler, logging.FileHandler):
                 logger.removeHandler(handler)
 
-        file_handler = logging.FileHandler(exp_cfg["logging"]["log_dir"], mode="w")
+        file_handler = logging.FileHandler(
+            f'{exp_cfg["results"]["results_dir"]}/{exp_cfg['name']}.log', mode="w"
+        )
         file_handler.setFormatter(
             logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
         )
@@ -113,12 +144,12 @@ def main():
     args = parse_args()
 
     # Load the configuration file
-    config = load_config(args.config)
+    config = load_config(args.cfg)
 
     # Set up the logger
     logger = setup_logger()
 
-    run_experiments(config, logger)
+    run_experiments(config, args.exps, logger)
 
     return
 

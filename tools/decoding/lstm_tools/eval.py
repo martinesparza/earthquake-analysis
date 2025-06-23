@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.metrics import mean_squared_error, r2_score
 
-from .preprocess import unroll_data
+from .utils import unroll_data
 
 
 def compute_moving_window_similarity(
@@ -15,9 +15,7 @@ def compute_moving_window_similarity(
     testing_window=10,
 ):
     # trial_length
-    trial_length = int(
-        np.ceil(epoch[1] / bin_size - epoch[0] / bin_size[0]),
-    )
+    trial_length = int(np.round(epoch[1] / bin_size - epoch[0] / bin_size))
 
     similarity_per_output = {}
 
