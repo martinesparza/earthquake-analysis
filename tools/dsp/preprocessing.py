@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
-import pyaldata as pyal
+import sys
+sys.path.append("/home/zms24/Desktop") 
+import PyalData.pyaldata as pyal # type:ignore
 
 from tools.params import Params
 
