@@ -174,7 +174,7 @@ def get_data_array(
                 trial_bhv_array = np.stack(df__["bhv"].to_list(), axis=0)
                 AllBhv[session, targetIdx, : len(trial_bhv_array), :, :] = trial_bhv_array
 
-    return (AllData,) if bhv is None else (AllData, AllBhv)
+    return AllData if bhv is None else (AllData, AllBhv)
 
 
 # rng = np.random.default_rng(12345)
@@ -183,32 +183,33 @@ def get_data_array(
 def add_bhv(trial_data, bhv_fields=["all"]):
     if bhv_fields[0] == "all":
         bhv_fields = [
-            "calibrated_eyes_pos",
-            "left_hand_pos",
-            "tail_pos",
-            "eye_acceleration",
-            "eye_azimuth",
-            "eye_direction",
-            "eye_distance_traveled",
-            "eye_eccentricity",
-            "eye_grid_ID",
-            "eye_velocity",
-            "eyebrow_pos",
-            "head_pos",
-            "eyes_pos",
-            "head_acceleration",
-            "head_direction",
-            "head_distance_traveled",
-            "head_grid_ID",
-            "head_velocity",
-            "head_tilt",
-            "nose_pos",
-            "pupil_size",
-            "right_hand_pos",
-            "Motion_energy_arm",
-            "Motion_energy_head",
+            "left_ankle",
+            "left_ankle_angle",
+            "left_elbow",
+            "left_elbow_angle",
+            "left_foot",
+            "left_knee",
+            "left_knee_angle",
+            "left_paw",
+            "left_shoulder",
+            "left_wrist",
+            "left_wrist_angle",
+            "right_ankle",
+            "right_ankle_angle",
+            "right_elbow",
+            "right_elbow_angle",
+            "right_foot",
+            "right_knee",
+            "right_knee_angle",
+            "right_paw",
+            "right_shoulder",
+            "right_wrist",
+            "right_wrist_angle",
+            "shoulder_center",
+            "tail_base",
+            "tail_middle",
+            "tail_tip",
         ]
-    print(trial_data.session[0])
     bhv_list = []
     for trial in range(len(trial_data)):
         design_matrix = np.empty((trial_data["right_knee"][trial].shape[0], 0))

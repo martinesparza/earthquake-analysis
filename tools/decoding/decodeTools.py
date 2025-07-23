@@ -16,6 +16,31 @@ from tools.params import Params
 from tools.viz import utilityTools as utility
 
 
+def moving_window_decoding(
+    data,
+    targets,
+    max_time_bin=None,
+    min_time_bin=0,
+    window_length_bin=50,
+    step_bin=5,
+    k=5,
+    bin_size=0.01,
+):
+    scores = []
+    if max_time_bin is None:
+        max_time_bin = data.shape[1]
+    for t in np.arange(max_time_bin - min_time_bin + 1 - window_length_bin, step=step_bin):
+        data_ = data[:, t : t + window_length_bin, :]
+        data_ = data_.reshape(-1, data_.shape[1] * data_.shape[2])
+        score = cross_val_score(GaussianNB(), data_, targets, scoring="accuracy", cv=k)
+        scores.append(score)
+
+    scores = np.array(scores)
+    time_points = np.arange(min_time_bin + window_length_bin, max_time_bin + 1, step_bin)
+
+    return scores, time_points * bin_size
+
+
 def custom_r2_func(y_true, y_pred, multioutput="raw_values"):
     "$R^2$ value as squared correlation coefficient, as per Gallego, NN 2020"
     c = np.corrcoef(y_true.T, y_pred.T) ** 2

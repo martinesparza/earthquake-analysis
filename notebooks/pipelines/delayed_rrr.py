@@ -41,12 +41,12 @@ sessions = [
     "M061_2025_03_04_10_00",
     "M061_2025_03_05_14_00",
     "M061_2025_03_06_14_00",
-    "M062_2025_03_19_14_00",
-    "M062_2025_03_20_14_00",
-    "M062_2025_03_21_14_00",
-    "M063_2025_03_12_14_00",
-    "M063_2025_03_13_14_00",
-    "M063_2025_03_14_15_30",
+    # "M062_2025_03_19_14_00",
+    # "M062_2025_03_20_14_00",
+    # "M062_2025_03_21_14_00",
+    # "M063_2025_03_12_14_00",
+    # "M063_2025_03_13_14_00",
+    # "M063_2025_03_14_15_30",
 ]
 
 data_dir = "/data/bnd-data/raw/"
@@ -125,5 +125,5 @@ for session, tmp_df in zip(sessions, df_):
     )
 
 results_path = "/home/me24/repos/earthquake-analysis/results/rrr/"
-with open(results_path + "delayed_rrr_all_v4.pkl", "wb") as f:
+with open(results_path + "delayed_rrr_all_v6_M61.pkl", "wb") as f:
     pickle.dump(rrr_dict, f)

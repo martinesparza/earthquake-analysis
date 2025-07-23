@@ -290,9 +290,12 @@ class ReducedRankRegression:
 
         # X_star = cp.vstack((X, lam_mat_sqrt))
         Y_star = cp.vstack((X, lam_mat_sqrt)) @ b_ridge
-        _, _, Vt = cp.linalg.svd(Y_star @ b_ridge, full_matrices=False)
 
-        self.coef_ = b_ridge @ Vt.T[:, : self.rank] @ Vt[: self.rank, :]
+        # _, _, Vt = cp.linalg.svd(Y_star @ b_ridge, full_matrices=False)
+        _, _, Vt = cp.linalg.svd(Y_star @ b_ridge.T, full_matrices=False)
+
+        # self.coef_ = b_ridge @ Vt.T[:, : self.rank] @ Vt[: self.rank, :]
+        self.coef_ = Vt.T[:, : self.rank] @ Vt[: self.rank, :] @ b_ridge
 
         r2, _ = decutils.multivariate_r2(Y, X @ self.coef_)
         if self.verbose:

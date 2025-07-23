@@ -1,8 +1,20 @@
+from contextlib import contextmanager
+
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 from matplotlib.colors import LinearSegmentedColormap
 
 from tools.params import colors
+
+
+@contextmanager
+def apply_plot_style(context: str = "talk"):
+    with plt.style.context("seaborn-v0_8-bright"):
+        sns.set_theme(context=context, style="ticks")
+
+        yield  # This allows you to plot within the context
+        sns.despine(offset=10, trim=True)
 
 
 def create_cmap_from_area(area):

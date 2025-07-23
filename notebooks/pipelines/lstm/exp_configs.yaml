@@ -250,3 +250,41 @@ experiment_7:
     plot_example: true
   results:
     results_dir: "/home/me24/repos/earthquake-analysis/results/lstm/experiment_7"
+
+experiment_8:
+  name: "experiment_all_keypoints"
+  description: "Windowing - seq-to-point"
+  data:
+    data_dir: "/data/bnd-data/raw/"
+    session: "M062_2025_03_21_14_00"
+    combine_time_bins: true
+    bin_size: 0.03
+  preprocess:
+    epoch: [-1 , 3.5]
+    sigma: 1
+    condition: "trial"
+    areas: ["MOp", "CP", "SSp", "VAL"]
+    bhv: ['right_knee', 'left_knee', 'shoulder_center', 'right_elbow', 'left_elbow']
+    window_data: true
+    len_window: 5
+    baseline_norm : true
+    n_input_dims: 20
+  model:
+    hidden_size: 300
+    num_layers: 2
+    dropout: 0.1
+    batch_first: true
+    device: 'cuda'
+  training:
+    lr: 0.001
+    loss: 'mse'
+    optimizer: 'adam'
+    n_epochs: 1000
+    batch_size: 1024
+    n_print_epoch: 10
+    k_folds: 5
+  eval:
+    testing_window: 20
+    plot_example: true
+  results:
+    results_dir: "/home/me24/repos/earthquake-analysis/results/lstm/experiment_8"

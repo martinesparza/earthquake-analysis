@@ -117,7 +117,7 @@ def run_experiments(exps: dict, exp_names: str | None, logger: logging.Logger):
                 logger.removeHandler(handler)
 
         file_handler = logging.FileHandler(
-            f'{exp_cfg["results"]["results_dir"]}/{exp_cfg['name']}.log', mode="w"
+            f'{exp_cfg["results"]["results_dir"]}/{exp_cfg["name"]}.log', mode="w"
         )
         file_handler.setFormatter(
             logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
