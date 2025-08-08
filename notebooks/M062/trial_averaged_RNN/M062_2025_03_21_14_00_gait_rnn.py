@@ -209,7 +209,7 @@ print(f"Building RNN with {len(regions_arr)} region(s)")
 print("Regions:", [r[0] for r in regions_arr])
 
 # === Train RNN ===
-nRunTrain = 2
+nRunTrain = 500
 print(f"\nRunning RNN training for {nRunTrain} runs with dtFactor={dtFactor}...")
 rnn_model, rnn_accuracy_fig = rnnz.run_rnn(
     trial_avg_activity,
