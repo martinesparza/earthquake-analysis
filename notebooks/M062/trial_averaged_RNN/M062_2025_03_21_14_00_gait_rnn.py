@@ -56,7 +56,7 @@ df = df.drop(columns="all_spikes") # the content is incorrect
 
 # === Preprocessing ===
 print("Preprocessing data...")
-df_ = preprocess(df)
+df_ = preprocess(df, only_trials=False)
 BIN_SIZE = df_['bin_size'][0]
 # get 'all_rates' column
 areas =[ "MOp_rates", "SSp_rates", "CP_rates", "VAL_rates"]
@@ -64,7 +64,7 @@ df_ = pyal.merge_signals(df_, areas, "all_rates")
 
 # correct trial length - this is an error in pyaldata
 df_['trial_length'] = (df_['trial_length'] / (BIN_SIZE * 100)).astype(int)
-df_ = df_[df_['trial_length'] == 200]
+# df_ = df_[df_['trial_length'] == 200]
 
 # === Metadata ===
 session_id = mat_file_0.replace("_pyaldata_0.mat", "")
@@ -186,13 +186,14 @@ for idx in df_gait.index:
 for idx in df_gait.index:
     df_gait.at[idx, 'gait_length'] = len(df_gait.at[idx, 'MOp_rates'])
 
+df_gait.to_pickle('/home/zms24/Desktop/earthquake/df_gait.pkl')
+
 sol_angles = sorted(df_gait.values_Sol_direction.unique())
 trial_labels = [f"solenoid {angle}" for angle in sol_angles]
 num_trials = len(df_gait)
 
 print(f"Mouse: {mouse}")
 print(f"Number of trials: {num_trials}")
-print(f"Perturbation time (bins): {perturb_time_idx}, ({perturb_time_sec:.2f} sec)")
 
 # === RNN Setup ===
 dtFactor = 2
@@ -209,7 +210,7 @@ print(f"Building RNN with {len(regions_arr)} region(s)")
 print("Regions:", [r[0] for r in regions_arr])
 
 # === Train RNN ===
-nRunTrain = 500
+nRunTrain = 5
 print(f"\nRunning RNN training for {nRunTrain} runs with dtFactor={dtFactor}...")
 rnn_model, rnn_accuracy_fig = rnnz.run_rnn(
     trial_avg_activity,

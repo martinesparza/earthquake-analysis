@@ -595,5 +595,47 @@ def plot_intertrial_pca_currents(all_currents, all_currents_labels, trial_labels
 
     return fig
 
+def plot_all_currents(all_currents, all_currents_labels, perturbation_time, curbd_colours, bin_size, dtFactor, mouse_num, z_score = True):
+    fig, ax = plt.subplots(figsize=(5, 3), dpi=300)
 
+    global_min, global_max = float('inf'), float('-inf')
+
+    for i, current_data in enumerate(all_currents):
+        current_label = all_currents_labels[i]
+        colour = curbd_colours.get(current_label, f'C{i % 10}')
+
+        current_data = np.array(current_data) 
+
+        if z_score :
+            mean_val = np.mean(current_data)
+            std_val = np.std(current_data)
+            current_data = (current_data - mean_val) / std_val
+
+        mean_current = np.mean(current_data, axis=(0, 1))
+        sem_current = np.std(current_data, axis=(0, 1)) / np.sqrt(current_data.shape[0] * current_data.shape[1])
+
+        time_axis = np.linspace(0, (current_data.shape[2] * bin_size) / dtFactor, current_data.shape[2])
+
+        ax.plot(time_axis, mean_current, linewidth=2, color=colour, label=current_label)
+        ax.fill_between(time_axis, mean_current - sem_current, mean_current + sem_current, alpha=0.3, color=colour)
+
+        # track global y-limits
+        global_min = min(global_min, np.min(mean_current - sem_current))
+        global_max = max(global_max, np.max(mean_current + sem_current))
+
+    # add perturbation marker
+    ax.axvline(perturbation_time, color='red', linestyle='--', linewidth=1)
+
+    # formatting
+    ax.set_xlabel("Time (s)", fontsize='large')
+    ax.set_ylabel("Current Strength", fontsize='large')
+    # ax.set_ylim(-1, 1)
+    ax.set_title(f"Session {mouse_num}", fontsize='x-large')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    # ax.legend(title="Current type", bbox_to_anchor=(1.05, 1), loc='upper left')
+    fig.tight_layout()
+
+    plt.show()
+    return fig
 

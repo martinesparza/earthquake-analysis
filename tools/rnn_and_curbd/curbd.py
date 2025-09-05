@@ -58,3 +58,5 @@ def format_intertrial_curbd_output(curbd_arr, curbd_labels, n_regions, reset_poi
 
     all_currents_labels = curbd_labels.flatten()
     return all_currents, all_currents_labels
+
+
