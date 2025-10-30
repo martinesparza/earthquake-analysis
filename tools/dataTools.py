@@ -7,6 +7,49 @@ import pyaldata as pyal
 from scipy.ndimage import gaussian_filter1d
 from sklearn.decomposition import PCA
 
+from tools.dimensionality.pca import compute_pca
+
+
+def _get_min_number_shared_trials(df, label_field):
+    return df[label_field].value_counts().min()
+
+
+def balance_classes(df, label_field, random_state=42):
+    min_trials = _get_min_number_shared_trials(df, label_field)
+    # print(f"Min g. trials per condition: {min_trials}")
+    labels = np.unique(df[label_field].values)
+    subsets = []
+    for label in labels:
+        subset = df[df[label_field] == label].sample(n=min_trials, random_state=random_state)
+        subsets.append(subset)
+
+    # Concatenate and shuffle the result
+    balanced_df = (
+        pd.concat(subsets).sample(frac=1, random_state=random_state).reset_index(drop=True)
+    )
+    return balanced_df
+
+
+def remove_trials_wo_motion_before_event(df, motion_field, event_field, verbose=True):
+
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("Input must be a pandas DataFrame.")
+    if motion_field not in df.columns or event_field not in df.columns:
+        raise ValueError(
+            f"DataFrame must contain '{motion_field}' and '{event_field}' columns."
+        )
+    event_onset = df[event_field].iloc[0]
+    initial_count = len(df)
+
+    filtered_df = df[df[motion_field].apply(lambda x: np.any(np.array(x) < event_onset))]
+
+    dropped_count = initial_count - len(filtered_df)
+    if verbose:
+        print(
+            f"Dropped {dropped_count} of {initial_count} rows ({dropped_count/initial_count:.2%})."
+        )
+    return filtered_df.reset_index(drop=True)
+
 
 def _smooth_data(arr, sigma=1):
     norm_arr = gaussian_filter1d(arr, sigma=sigma, axis=0)
@@ -178,6 +221,34 @@ def get_data_array(
 
 
 # rng = np.random.default_rng(12345)
+
+
+def add_pca_field(trial_data, signal, n_components):
+    pca_model = compute_pca(np.concatenate(trial_data[signal].values), n_components)
+    trial_data = pyal.apply_dim_reduce_model(trial_data, pca_model, signal, f"{signal}_pca")
+
+    return trial_data
+
+
+def add_pca_df(
+    trial_data: pd.DataFrame,
+    pca_fields: list | str = ["all"],
+    n_components: int | None = None,
+):
+
+    if not isinstance(pca_fields, list):
+        pca_fields = [pca_fields]
+    if pca_fields == ["all"]:
+        pca_fields = [col for col in trial_data.columns if col.endswith("_rates")]
+        try:
+            pca_fields.remove("all_rates")
+        except:
+            print("No <all> field")
+
+    for pca_field in pca_fields:
+        trial_data = add_pca_field(trial_data, pca_field, n_components)
+
+    return trial_data
 
 
 def add_bhv(trial_data, bhv_fields=["all"]):

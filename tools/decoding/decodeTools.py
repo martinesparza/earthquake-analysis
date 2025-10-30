@@ -4,9 +4,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pyaldata as pyal
 import seaborn as sns
-import tqdm
+from sklearn.linear_model import Ridge
+from tqdm import tqdm
 from sklearn.decomposition import PCA
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, make_scorer
 from sklearn.model_selection import KFold, cross_val_predict, cross_val_score
 from sklearn.naive_bayes import GaussianNB
 
@@ -14,31 +15,6 @@ from tools import dataTools as dt
 from tools import params
 from tools.params import Params
 from tools.viz import utilityTools as utility
-
-
-def moving_window_decoding(
-    data,
-    targets,
-    max_time_bin=None,
-    min_time_bin=0,
-    window_length_bin=50,
-    step_bin=5,
-    k=5,
-    bin_size=0.01,
-):
-    scores = []
-    if max_time_bin is None:
-        max_time_bin = data.shape[1]
-    for t in np.arange(max_time_bin - min_time_bin + 1 - window_length_bin, step=step_bin):
-        data_ = data[:, t : t + window_length_bin, :]
-        data_ = data_.reshape(-1, data_.shape[1] * data_.shape[2])
-        score = cross_val_score(GaussianNB(), data_, targets, scoring="accuracy", cv=k)
-        scores.append(score)
-
-    scores = np.array(scores)
-    time_points = np.arange(min_time_bin + window_length_bin, max_time_bin + 1, step_bin)
-
-    return scores, time_points * bin_size
 
 
 def custom_r2_func(y_true, y_pred, multioutput="raw_values"):
@@ -54,6 +30,72 @@ def custom_r2_func(y_true, y_pred, multioutput="raw_values"):
         r2s = r2s[0]
 
     return r2s
+
+
+def get_custom_scorer():
+    return make_scorer(custom_r2_func, multioutput="variance_weighted")
+
+
+def regression_moving_window(
+    X: np.ndarray,
+    y: np.ndarray,
+    max_time_bin=None,
+    step_bin=1,
+    window_length_bin=20,
+    scorer=get_custom_scorer(),
+    alpha=0.05,
+    cv=5,
+    bin_size=0.01,
+) -> tuple:
+
+    # We are going to mix time points between trials
+
+    # X and y have shape (n_trials x time x n_comp)
+    r2_scores = []
+    if max_time_bin is None:
+        max_time_bin = X.shape[1]
+
+    for t in tqdm(np.arange(max_time_bin + 1 - window_length_bin, step=step_bin)):
+        X_, y_ = X[:, t : t + window_length_bin, :], y[:, t : t + window_length_bin, :]
+        n_trials, n_time, _ = X_.shape
+        r2 = cross_val_score(
+            Ridge(alpha=alpha, solver="svd"),
+            X_.reshape(n_trials * n_time, -1),
+            y_.reshape(n_trials * n_time, -1),
+            scoring=scorer,
+            cv=cv,
+        )
+        r2_scores.append(r2)
+    scores = np.array(r2_scores)
+    time_points = np.arange(window_length_bin, max_time_bin + 1, step_bin)
+
+    return scores, time_points * bin_size
+
+
+def moving_window_decoding(
+    data,
+    targets,
+    max_time_bin=None,
+    min_time_bin=0,
+    window_length_bin=50,
+    step_bin=5,
+    cv=5,
+    bin_size=0.01,
+):
+    scores = []
+    if max_time_bin is None:
+        max_time_bin = data.shape[1]
+
+    for t in np.arange(max_time_bin - min_time_bin + 1 - window_length_bin, step=step_bin):
+        data_ = data[:, t : t + window_length_bin, :]
+        data_ = data_.reshape(-1, data_.shape[1] * data_.shape[2])
+        score = cross_val_score(GaussianNB(), data_, targets, scoring="accuracy", cv=cv)
+        scores.append(score)
+
+    scores = np.array(scores)
+    time_points = np.arange(min_time_bin + window_length_bin, max_time_bin + 1, step_bin)
+
+    return scores, time_points * bin_size
 
 
 def columnwise_r2(Y_true: np.ndarray, Y_pred: np.ndarray) -> np.ndarray:

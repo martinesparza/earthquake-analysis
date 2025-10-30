@@ -5,7 +5,6 @@ import pandas as pd
 import pyaldata as pyal
 from scipy.linalg import inv, qr, svd
 
-from tools.dataTools import get_data_array
 from tools.params import Params
 
 
@@ -88,25 +87,18 @@ def canoncorr(X: np.array, Y: np.array, fullReturn: bool = False) -> np.array:
     return A, B, r, U, V
 
 
-def get_ccs_between_two_areas(df, area1, area2, n_components=10):
+def get_ccs_between_two_areas_from_df(df, area1, area2):
 
-    AllData_area1 = get_data_array(df, area=area1, model="pca")
-    AllData_area2 = get_data_array(df, area=area2, model="pca")
-
-    _, _, min_trials, min_time, _ = np.min(
-        (AllData_area1.shape, AllData_area2.shape), axis=0
-    )
-    data1 = np.reshape(AllData_area1[:, :min_trials, :min_time, :], (-1, n_components))
-    data2 = np.reshape(AllData_area2[:, :min_trials, :min_time, :], (-1, n_components))
-
+    data1, data2 = df[f"{area1}_rates_pca"].values, df[f"{area2}_rates_pca"].values
+    data1, data2 = np.concatenate(data1), np.concatenate(data2)
     ccs = canoncorr(data1, data2)
 
     return ccs
 
 
 # Function to roll the arrays
-def _roll_array(arr, shift):
-    return np.roll(arr, shift=shift, axis=0)  # Rolling along the time axis
+def _roll_array(arr, shift, axis=0):
+    return np.roll(arr, shift=shift, axis=axis)  # Rolling along the time axis
 
 
 def compute_shifted_cca_between_areas(
@@ -160,11 +152,11 @@ def compute_shifted_cca_between_areas(
         df_tmp = pyal.restrict_to_interval(df_tmp, epoch_fun=Params.perturb_epoch)
         ccs_time_shifted.append(
             np.mean(
-                get_ccs_between_two_areas(
+                get_ccs_between_two_areas_from_df(
                     df_tmp,
                     area1=area_to_shift,
                     area2=area_to_compare,
-                    n_components=n_components,
+                    # n_components=n_components,
                 )[1:4]
             )
         )

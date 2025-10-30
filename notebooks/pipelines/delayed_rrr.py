@@ -125,5 +125,5 @@ for session, tmp_df in zip(sessions, df_):
     )
 
 results_path = "/home/me24/repos/earthquake-analysis/results/rrr/"
-with open(results_path + "delayed_rrr_all_v6_M61.pkl", "wb") as f:
+with open(results_path + "delayed_rrr_all_v7_M61.pkl", "wb") as f:
     pickle.dump(rrr_dict, f)

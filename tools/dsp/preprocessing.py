@@ -80,6 +80,7 @@ def preprocess(
     time_signals = [
         signal for signal in pyal.get_time_varying_fields(df) if "spikes" in signal
     ]
+    print(time_signals)
 
     # Remove low firing neurons
     for signal in time_signals:

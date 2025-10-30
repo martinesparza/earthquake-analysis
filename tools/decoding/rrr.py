@@ -292,10 +292,11 @@ class ReducedRankRegression:
         Y_star = cp.vstack((X, lam_mat_sqrt)) @ b_ridge
 
         # _, _, Vt = cp.linalg.svd(Y_star @ b_ridge, full_matrices=False)
-        _, _, Vt = cp.linalg.svd(Y_star @ b_ridge.T, full_matrices=False)
+        # _, _, Vt = cp.linalg.svd(Y_star @ b_ridge.T, full_matrices=False)
+        _, _, Vt = cp.linalg.svd(Y_star, full_matrices=False)
 
-        # self.coef_ = b_ridge @ Vt.T[:, : self.rank] @ Vt[: self.rank, :]
-        self.coef_ = Vt.T[:, : self.rank] @ Vt[: self.rank, :] @ b_ridge
+        self.coef_ = b_ridge @ Vt.T[:, : self.rank] @ Vt[: self.rank, :]
+        # self.coef_ = Vt.T[:, : self.rank] @ Vt[: self.rank, :] @ b_ridge
 
         r2, _ = decutils.multivariate_r2(Y, X @ self.coef_)
         if self.verbose:
@@ -316,3 +317,50 @@ class ReducedRankRegression:
         if self.coef_ is None:
             raise ValueError("Model is not fitted yet.")
         return self.coef_
+
+
+class ReducedRankRegression_:
+    def __init__(self, r: int, lam: float, use_sklearn=True, verbose=False):
+        if lam <= 0:
+            raise ValueError("Regularisation parameter must be positive.")
+        self.lam = lam
+        self.rank = r
+        self.coef_: np.ndarray | None = None
+        self.verbose = verbose
+        return
+
+    def fit(self, X, Y, fit_intercept=True):
+        """Fits Brrr to X and Y train. Assumes X and Y are centered. See Mukherjee and Zhu, 2011
+
+        Args:
+            X (np.ndarray): Predictors. N (samples) x P (features)
+            Y (np.ndarray): Responses. N (samples) x Q (features)
+        """
+
+        # Enforce float dtype
+        if not np.issubdtype(X.dtype, np.floating):
+            warnings.warn("Matrix X is not of type float. Changing to float")
+            X = X.astype(float)
+        if not np.issubdtype(Y.dtype, np.floating):
+            warnings.warn("Matrix Y is not of type float. Changing to float")
+            Y = Y.astype(float)
+
+        X = cp.asarray(X)
+        Y = cp.asarray(Y)
+
+        if fit_intercept:
+            self.mean_input = X.mean(axis=0)
+            self.mean_output = Y.mean(axis=0)
+
+            X = X - self.mean_input
+            Y = Y - self.mean_output
+
+        X_star = cp.vstack((X, cp.sqrt(self.lam) * cp.eye(X.shape[1])))
+
+        CXY = X.T @ Y
+        CXX_inv = cp.linalg.pinv((X.T @ X) + cp.sqrt(self.lam) * cp.eye(X.shape[1]))
+
+        b_ridge = CXX_inv @ CXY  # Shape P x Q. Maps X-feat to Y-feat
+        _, _, Vt = cp.linalg.svd(X_star @ b_ridge, full_matrices=False)  # Shape q x q
+
+        self.coef_ = Vt.T[:, : self.rank] @ Vt[: self.rank, :] @ b_ridge

@@ -3,7 +3,9 @@ Module about communication subspaces
 """
 
 import numpy as np
+from scipy import sparse
 from scipy.linalg import null_space, orth
+from sklearn.base import BaseEstimator
 
 
 def get_output_null_projector(regressor, var_X=None):
@@ -62,3 +64,61 @@ def variance_across_arrays_in_subspace(arrs, W):
 
 def variance_in_subspace_df(df, signal, W):
     return variance_across_arrays_in_subspace(df[signal].values, W)
+
+
+class ReducedRankCommSubspace:
+    """
+    Reduced Rank comm space (find the reduced comm subspace between areas)
+
+    Constructor parameters
+    ----------------------
+    rank : int
+        rank constraint.
+    reg : float (optional)
+        regularization parameter
+        (alpha in sklearn.linear_model.Ridge)
+    """
+
+    def __init__(self, rank, reg=None):
+        self.rank = rank
+        self.reg = reg if reg is not None else 0
+
+    def __str__(self):
+        return "Reduced Rank Regressor (rank = {})".format(self.rank)
+
+    def fit(self, _X, _Y):
+        """
+        Fit reduced rank regressor to data.
+
+        Parameters
+        ----------
+        _X : ndarray
+            matrix of features with shape (n_samples x n_features)
+        _Y : ndarray
+            matrix of targets with shape (n_samples x n_target_features)
+
+        Returns
+        -------
+        Sets attributes needed for prediction and returns None
+        """
+        if np.ndim(_X) == 1:
+            _X = np.reshape(_X, (-1, 1))
+        if np.ndim(_Y) == 1:
+            _Y = np.reshape(_Y, (-1, 1))
+
+        self.mean_input = _X.mean(axis=0)
+        self.mean_output = _Y.mean(axis=0)
+
+        X = _X - self.mean_input
+        Y = _Y - self.mean_output
+
+        CXX_inv = np.linalg.pinv((X.T @ X) + self.reg * sparse.eye(X.shape[1]))
+        CXY = X.T @ Y
+        W = CXX_inv @ CXY
+        U, _S, _V = np.linalg.svd(W)
+
+        self.Uw = U[:, : self.rank]
+        self.projector_mx = self.Uw @ self.Uw.T
+        print(self.projector_mx.shape)
+
+        return

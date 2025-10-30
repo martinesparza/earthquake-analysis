@@ -1,13 +1,6 @@
-import random
-
 import numpy as np
-import pandas as pd
-import pyaldata as pyal
-import seaborn as sns
-from matplotlib import pyplot as plt
 from scipy.sparse.csgraph import connected_components, shortest_path
-from sklearn.decomposition import PCA, KernelPCA
-from sklearn.manifold import Isomap
+from sklearn.decomposition import PCA
 from sklearn.neighbors import NearestNeighbors, kneighbors_graph
 from sklearn.preprocessing import KernelCenterer
 from sklearn.utils.graph import _fix_connected_components
@@ -182,14 +175,15 @@ def normalised_components_for_vaf(arr, vaf=0.80, n_components=None):
     return num_components / n_components
 
 
-def get_pr_for_subsets_of_neurons(arr, niter=5, linear=True, verbose=False, n_neighbors=15):
+def get_pr_for_subsets_of_neurons(
+    arr, n_iter=5, step=10, linear=True, verbose=False, n_neighbors=15
+):
     results = []
-    for num_neurons in np.arange(5, arr.shape[1] + 1, 10):
+    for num_neurons in tqdm(np.arange(5, arr.shape[1] + 1, step)):
         if verbose:
             print(f"Neurons: {num_neurons}")
         prs = []
-        for i, _ in enumerate(range(niter)):
-            print(f"\t{i}")
+        for i, _ in enumerate(range(n_iter)):
             random_neurons = np.random.randint(0, arr.shape[1], size=num_neurons)
             if linear:
                 pr = pca_pr(arr[:, random_neurons])

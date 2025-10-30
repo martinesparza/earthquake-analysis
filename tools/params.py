@@ -103,3 +103,4 @@ class colors:
     contra = "orange"
     ipsi = "cornflowerblue"
     GPe = "k"
+    bhv_light = np.array([100, 100, 100]) / 255
