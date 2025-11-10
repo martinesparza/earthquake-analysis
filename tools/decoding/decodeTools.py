@@ -81,15 +81,18 @@ def moving_window_decoding(
     step_bin=5,
     cv=5,
     bin_size=0.01,
+    model=GaussianNB(),
 ):
     scores = []
     if max_time_bin is None:
         max_time_bin = data.shape[1]
 
-    for t in np.arange(max_time_bin - min_time_bin + 1 - window_length_bin, step=step_bin):
+    for t in tqdm(
+        np.arange(max_time_bin - min_time_bin + 1 - window_length_bin, step=step_bin)
+    ):
         data_ = data[:, t : t + window_length_bin, :]
         data_ = data_.reshape(-1, data_.shape[1] * data_.shape[2])
-        score = cross_val_score(GaussianNB(), data_, targets, scoring="accuracy", cv=cv)
+        score = cross_val_score(model, data_, targets, scoring="accuracy", cv=cv)
         scores.append(score)
 
     scores = np.array(scores)

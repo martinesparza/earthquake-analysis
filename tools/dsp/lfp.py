@@ -6,6 +6,11 @@ import numpy as np
 from scipy.signal import butter, sosfiltfilt, hilbert
 
 
+def rolling_window(data, window_size, step=1):
+    windows = np.lib.stride_tricks.sliding_window_view(data, window_size, axis=0)
+    return windows[::step]
+
+
 def sos_bandpass_filter(data: np.array, fs: float, freqs: tuple, order: int = 4):
     """A forward-backward digital filter using cascaded second-order sections.
 
