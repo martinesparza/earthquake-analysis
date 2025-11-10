@@ -30,7 +30,8 @@ def shaded_errorbar(
     y: np.array = None,
     lineStat=np.mean,
     errorStat=np.std,
-    alpha=0.2,
+    alpha_line=1,
+    alpha_err=0.2,
     **props,
 ):
     """
@@ -44,7 +45,7 @@ def shaded_errorbar(
         y = x
         x = np.arange(y.shape[0])
 
-    line = ax.plot(x, lineStat(y, axis=1))[0]
+    line = ax.plot(x, lineStat(y, axis=1), alpha=alpha_line)[0]
 
     shadeProps = props.copy()
     for key in props.keys():
@@ -69,7 +70,7 @@ def shaded_errorbar(
         x,
         lineStat(y, axis=1) - shadedY,
         lineStat(y, axis=1) + shadedY,
-        alpha=alpha,
+        alpha=alpha_err,
         **shadeProps,
     )
 
