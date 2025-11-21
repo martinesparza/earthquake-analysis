@@ -367,6 +367,7 @@ class ReducedRankRegression_:
 
         self.coef_ = Vt.T[:, : self.rank] @ Vt[: self.rank, :] @ b_ridge
 
+
 class ReducedRankRegressorBence(BaseEstimator):
     """
     Reduced Rank Regressor (linear 'bottlenecking' or 'multitask learning')
@@ -379,15 +380,14 @@ class ReducedRankRegressorBence(BaseEstimator):
         regularization parameter
         (alpha in sklearn.linear_model.Ridge)
     """
+
     def __init__(self, rank, reg=None):
         self.rank = rank
         self.reg = reg if reg is not None else 0
 
-
     def __str__(self):
 
-        return 'Reduced Rank Regressor (rank = {})'.format(self.rank)
-
+        return "Reduced Rank Regressor (rank = {})".format(self.rank)
 
     def fit(self, _X, _Y):
         """
@@ -419,13 +419,12 @@ class ReducedRankRegressorBence(BaseEstimator):
         CXX_inv = np.linalg.pinv((X.T @ X) + self.reg * sparse.eye(X.shape[1]))
         CXY = X.T @ Y
         _U, _S, V = np.linalg.svd(CXY.T @ (CXX_inv @ CXY), full_matrices=False)
-        self.W = V[0:self.rank, :].T
+        self.W = V[0 : self.rank, :].T
         self.A = (CXX_inv @ (CXY @ self.W)).T
 
         self.projector_mx = self.A.T @ self.W.T
 
         return self
-
 
     def predict(self, X):
         """
@@ -447,7 +446,86 @@ class ReducedRankRegressorBence(BaseEstimator):
     @property
     def coef_(self):
         return self.projector_mx.T
-    
 
 
+class ReducedRankRegressorBenceGPU(BaseEstimator):
+    """
+    Reduced Rank Regressor (linear 'bottlenecking' or 'multitask learning')
 
+    Constructor parameters
+    ----------------------
+    rank : int
+        rank constraint.
+    reg : float (optional)
+        regularization parameter
+        (alpha in sklearn.linear_model.Ridge)
+    """
+
+    def __init__(self, rank, reg=None):
+        self.rank = rank
+        self.reg = reg if reg is not None else 0
+
+    def __str__(self):
+
+        return "Reduced Rank Regressor (rank = {})".format(self.rank)
+
+    def fit(self, _X, _Y):
+        """
+        Fit reduced rank regressor to data.
+
+        Parameters
+        ----------
+        _X : ndarray
+            matrix of features with shape (n_samples x n_features)
+        _Y : ndarray
+            matrix of targets with shape (n_samples x n_target_features)
+
+        Returns
+        -------
+        Sets attributes needed for prediction and returns None
+        """
+        _X = cp.asarray(_X)
+        _Y = cp.asarray(_Y)
+
+        if cp.ndim(_X) == 1:
+            _X = cp.reshape(_X, (-1, 1))
+        if cp.ndim(_Y) == 1:
+            _Y = cp.reshape(_Y, (-1, 1))
+
+        self.mean_input = _X.mean(axis=0)
+        self.mean_output = _Y.mean(axis=0)
+
+        X = _X - self.mean_input
+        Y = _Y - self.mean_output
+
+        CXX_inv = cp.linalg.pinv((X.T @ X))
+        CXY = X.T @ Y
+        _U, _S, V = cp.linalg.svd(CXY.T @ (CXX_inv @ CXY), full_matrices=False)
+        self.W = V[0 : self.rank, :].T
+        self.A = (CXX_inv @ (CXY @ self.W)).T
+
+        self.projector_mx = self.A.T @ self.W.T
+
+        return self
+
+    def predict(self, X):
+        """
+        Predict using a low-rank regressor
+
+        Parameters
+        ----------
+        X : ndarray
+            input matrix of features with shape (n_samples x n_features)
+
+        Returns
+        -------
+        matrix of predictions with shape (n_samples x n_target_features)
+        """
+        X = cp.asarray(X)
+        if X.ndim == 1:
+            X = X.reshape(-1, 1)
+        return cp.array(((X - self.mean_input) @ self.projector_mx) + self.mean_output)
+
+    @property
+    def coef_(self):
+        return self.projector_mx.T
