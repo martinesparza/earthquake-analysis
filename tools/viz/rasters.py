@@ -148,6 +148,8 @@ def plot_heatmap_raster(
     num_ticks=10,
     show_colorbar=False,
     add_sol_onset=False,
+    cmap="viridis",
+    clim=(0, 1),
 ):
     """Generate heatmap raster with a given array
 
@@ -161,12 +163,13 @@ def plot_heatmap_raster(
     Returns:
         ax: Axes object
     """
-    rates = np.concatenate(df[f"{area}_rates"].values, axis=0).T
+    rates = np.concatenate(df[f"{area}_spikes"].values, axis=0).T
     trial_length = df[f"{area}_rates"].values[0].shape[0]
 
     if ax is None:
-        fig, ax = plt.subplots(sharex="all", figsize=(15, 5))
-    im = ax.imshow(rates, cmap="viridis", origin="lower", aspect="auto")
+        fig, ax = plt.subplots(sharex="all", figsize=(10, 5))
+    im = ax.imshow(rates, cmap=cmap, origin="lower", aspect="auto")
+    im.set_clim(clim)
     if add_sol_onset:
         for time_bin in range(len(df)):
             sol_on = time_bin * (trial_length) + df.idx_sol_on.values[0]

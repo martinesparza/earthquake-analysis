@@ -55,7 +55,7 @@ def regression_moving_window(
     if max_time_bin is None:
         max_time_bin = X.shape[1]
 
-    for t in np.arange(max_time_bin + 1 - window_length_bin, step=step_bin):
+    for t in tqdm(np.arange(max_time_bin + 1 - window_length_bin, step=step_bin)):
         X_, y_ = X[:, t : t + window_length_bin, :], y[:, t : t + window_length_bin, :]
         n_trials, n_time, _ = X_.shape
         r2 = cross_val_score(
@@ -86,7 +86,9 @@ def moving_window_decoding(
     if max_time_bin is None:
         max_time_bin = data.shape[1]
 
-    for t in tqdm(np.arange(max_time_bin - min_time_bin + 1 - window_length_bin, step=step_bin)):
+    for t in tqdm(
+        np.arange(max_time_bin - min_time_bin + 1 - window_length_bin, step=step_bin)
+    ):
         data_ = data[:, t : t + window_length_bin, :]
         data_ = data_.reshape(-1, data_.shape[1] * data_.shape[2])
         score = cross_val_score(GaussianNB(), data_, targets, scoring="accuracy", cv=cv)
