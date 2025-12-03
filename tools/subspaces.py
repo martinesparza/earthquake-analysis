@@ -66,6 +66,45 @@ def variance_in_subspace_df(df, signal, W):
     return variance_across_arrays_in_subspace(df[signal].values, W)
 
 
+def variance_in_subspace(X, W):
+    """
+    Variance in a given subspace
+
+    Parameters
+    ----------
+    X : 2D np.ndarray
+        n_samples x n_features data array
+    W : 2D np.ndarray
+        n_features x n_components projection matrix
+
+    Returns
+    -------
+    variance in the subspace
+    """
+    # Assume W is orthogonal
+    W_norm = W / np.linalg.norm(W, axis=0)
+    return np.trace(W_norm.T @ np.cov(X.T) @ W_norm)
+
+
+def variance_in_dims(X, W):
+    """
+    Variance in each dimension of a given subspace
+
+    Parameters
+    ----------
+    X : 2D np.ndarray
+        n_samples x n_features data array
+    W : 2D np.ndarray
+        n_features x n_components projection matrix
+
+    Returns
+    -------
+    np.array with the variance in the each dimension
+    """
+    W_norm = W / np.linalg.norm(W, axis=0)
+    return np.diag(W_norm.T @ np.cov(X.T) @ W_norm)
+
+
 class ReducedRankCommSubspace:
     """
     Reduced Rank comm space (find the reduced comm subspace between areas)
