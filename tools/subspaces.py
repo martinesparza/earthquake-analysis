@@ -8,6 +8,32 @@ from scipy.linalg import null_space, orth
 from sklearn.base import BaseEstimator
 
 
+def project_signal(trial_data_, W, signal, out_fieldname):
+    """
+    Project a signal using a weight matrix
+
+    Parameters
+    ----------
+    trial_data : pd.DataFrame
+        data in trial_data format
+    W : np.array
+        projection matrix
+        shape: N x D
+    signal : str
+        signal to project
+    out_fieldname : str
+        name of the field in which to store the projections
+
+    Returns
+    -------
+    trial_data with the projections added
+    """
+    trial_data = trial_data_.copy()
+    trial_data[out_fieldname] = [s @ W for s in trial_data[signal].values]
+
+    return trial_data
+
+
 def get_output_null_projector(regressor, var_X=None):
     """
     Matrix that projects input data into the regressor's output-null subspace
