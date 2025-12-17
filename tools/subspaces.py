@@ -88,6 +88,9 @@ def get_output_potent_projector(regressor, var_X=None):
 
 
 def variance_across_arrays_in_subspace(arrs, W):
+    '''
+    Returns variance across trials and summed across components
+    '''
     return np.sum(np.var(np.stack([arr @ W for arr in arrs], axis=-1), axis=-1), axis=1)
 
 

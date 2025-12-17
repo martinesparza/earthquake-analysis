@@ -426,7 +426,6 @@ class ReducedRankRegressorBence(BaseEstimator):
         # This is not making a subspace, the matrix is not orthogonal
 
         self.projector_mx = self.A.T @ self.W.T
-        print(self.projector_mx.shape)
 
         return self
 
