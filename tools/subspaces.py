@@ -4,8 +4,11 @@ Module about communication subspaces
 
 import numpy as np
 from scipy import sparse
+import scipy
 from scipy.linalg import null_space, orth
 from sklearn.base import BaseEstimator
+
+import tools.dimensionality as dim
 
 
 def project_signal(trial_data_, W, signal, out_fieldname):
@@ -184,6 +187,42 @@ class ReducedRankCommSubspace:
 
         self.Uw = U[:, : self.rank]
         self.projector_mx = self.Uw @ self.Uw.T
-        print(self.projector_mx.shape)
+
+        # Here you are asking: Which dirctions of X have the largest structured changes on Y
+        # The projector matrix is orthogonal.
+        # print(self.projector_mx.shape)
 
         return
+
+    @property
+    def coef_(self):
+        return self.projector_mx.T
+
+
+def compute_embedding(td, signal_x, signal_y, time_bin_window, model, k=None):
+
+    X = np.stack(td[signal_x].values)
+    y = np.stack(td[signal_y].values)
+    _, _, n_feat_in = X.shape
+    _, _, n_feat_out = y.shape
+
+    # Slice time window and reshape
+    X, y = (
+        X[:, time_bin_window[0] : time_bin_window[1], :],
+        y[:, time_bin_window[0] : time_bin_window[1], :],
+    )
+    X, y = X.reshape(-1, n_feat_in), y.reshape(-1, n_feat_out)
+
+    if model == "pca":
+        pca_model = dim.compute_pca(X, n_components=k)
+        W = pca_model.components_.T
+    else:
+        model.fit(X, y)
+        W = scipy.linalg.orth(model.coef_.T)
+
+    return W
+
+
+def compute_overlap_between_subspaces(emb_a, emb_b):
+    angles = scipy.linalg.subspace_angles(emb_a, emb_b)
+    return np.mean(np.cos(angles) ** 2)

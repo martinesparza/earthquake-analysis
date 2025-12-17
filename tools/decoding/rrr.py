@@ -234,7 +234,7 @@ def delayed_rrr_on_df(
 
 class ReducedRankRegression:
 
-    def __init__(self, r: int, lam: float, use_sklearn=True, verbose=False):
+    def __init__(self, r: int, lam: float, use_sklearn=False, verbose=False):
         if lam <= 0:
             raise ValueError("Regularisation parameter must be positive.")
         self.lam = lam
@@ -422,7 +422,11 @@ class ReducedRankRegressorBence(BaseEstimator):
         self.W = V[0 : self.rank, :].T
         self.A = (CXX_inv @ (CXY @ self.W)).T
 
+        # Here we are asking: “Which combinations of Y are most predictable from X
+        # This is not making a subspace, the matrix is not orthogonal
+
         self.projector_mx = self.A.T @ self.W.T
+        print(self.projector_mx.shape)
 
         return self
 
