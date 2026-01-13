@@ -51,3 +51,9 @@ def sort_neurons_in_time_array(arr):
     z_scored_firing_rates = (sorted_firing_rates - global_mean) / global_std
 
     return z_scored_firing_rates
+
+
+def compute_moving_window_mean_on_array(df, signal, window_s):
+    arr = np.concatenate(df[signal].values, axis=0)
+    means, time_bins = moving_window_mean(arr, int(window_s / df.bin_size.values[0]))
+    return means, time_bins

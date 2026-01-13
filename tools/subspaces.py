@@ -88,9 +88,9 @@ def get_output_potent_projector(regressor, var_X=None):
 
 
 def variance_across_arrays_in_subspace(arrs, W):
-    '''
+    """
     Returns variance across trials and summed across components
-    '''
+    """
     return np.sum(np.var(np.stack([arr @ W for arr in arrs], axis=-1), axis=-1), axis=1)
 
 
@@ -205,21 +205,21 @@ class ReducedRankCommSubspace:
 def compute_embedding(td, signal_x, signal_y, time_bin_window, model, k=None):
 
     X = np.stack(td[signal_x].values)
-    y = np.stack(td[signal_y].values)
     _, _, n_feat_in = X.shape
-    _, _, n_feat_out = y.shape
 
     # Slice time window and reshape
-    X, y = (
-        X[:, time_bin_window[0] : time_bin_window[1], :],
-        y[:, time_bin_window[0] : time_bin_window[1], :],
-    )
-    X, y = X.reshape(-1, n_feat_in), y.reshape(-1, n_feat_out)
+    X = X[:, time_bin_window[0] : time_bin_window[1], :]
+    X = X.reshape(-1, n_feat_in)
 
     if model == "pca":
         pca_model = dim.compute_pca(X, n_components=k)
         W = pca_model.components_.T
     else:
+        y = np.stack(td[signal_y].values)
+        _, _, n_feat_out = y.shape
+        y = y[:, time_bin_window[0] : time_bin_window[1], :]
+        y = y.reshape(-1, n_feat_out)
+
         model.fit(X, y)
         W = scipy.linalg.orth(model.coef_.T)
 
@@ -227,5 +227,16 @@ def compute_embedding(td, signal_x, signal_y, time_bin_window, model, k=None):
 
 
 def compute_overlap_between_subspaces(emb_a, emb_b):
+
     angles = scipy.linalg.subspace_angles(emb_a, emb_b)
-    return np.mean(np.cos(angles) ** 2)
+
+    # Same dimension
+    if emb_a.shape[-1] == emb_b.shape[-1]:
+        overlap = np.mean(np.cos(angles) ** 2)
+
+    # Different dimension
+    else:
+        min_d = np.min([emb_a.shape[-1], emb_b.shape[-1]])
+        overlap = (1 / min_d) * np.sum(np.cos(angles) ** 2)
+
+    return overlap
