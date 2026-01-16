@@ -1,0 +1,169 @@
+"""
+Docstring for kinematics.utils
+"""
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+from sklearn.mixture import GaussianMixture
+from scipy.signal import savgol_filter
+
+from scipy.stats import skew
+
+
+def assess_bimodality(x, n_init=5, random_state=0):
+    g = GaussianMixture(
+        n_components=2, covariance_type="full", n_init=n_init, random_state=random_state
+    )
+
+    x = x.reshape(-1, 1)
+    g.fit(x)
+
+    w = g.weights_.ravel()
+    mu = g.means_.ravel()
+    sd = np.sqrt(g.covariances_.ravel())
+
+    order = np.argsort(mu)
+    w, mu, sd = w[order], mu[order], sd[order]
+    # print("weights:", w)
+    # print("means:", mu)
+    # print("sds:", sd)
+    d = abs(mu[1] - mu[0]) / np.sqrt(sd[0] ** 2 + sd[1] ** 2)
+    print(f"d: {d:.3f}")
+    bimodal = (w.min() > 0.10) and (d > 1.6)
+    print(f"Bimodal: {bimodal}")
+
+    return bimodal, mu
+
+
+def starts_of_below_thresh_windows(arr, thresh: float, win: int):
+    """
+    Return start indices i such that arr[i:i+win] are ALL < thresh
+    (sliding window of step 1). Its basically a convolution and then find values that match
+    the window length
+
+    Parameters
+    ----------
+    arr :
+    thresh : float
+    win : int
+        window length (in samples).
+
+    Returns
+    -------
+    starts : np.ndarray
+        start indices of all valid windows.
+    """
+    arr = np.asarray(arr)
+    if win <= 0:
+        raise ValueError("win must be >= 1")
+
+    mask = arr < thresh
+    if win == 1:
+        return np.flatnonzero(mask)
+
+    # counts[j] = number of True values in mask[j:j+win]
+    counts = np.convolve(mask.astype(np.int32), np.ones(win, dtype=np.int32), mode="valid")
+    return np.flatnonzero(counts == win)
+
+
+def immobile_starts_before_event(bhv_arr, thresh, event_onset=(100, 200), win=50) -> bool:
+    """Detects if the animal is immobile in a give index window (before the perturbation)
+
+    Parameters
+    ----------
+    bhv_arr : _type_
+        array of kinematics of the mouse
+    thresh : float,
+        threshold under which the animal is immobile
+    event_onset : tuple, optional
+        onset of perturbation, by default 200
+    win : int, optional
+        minimum immobile duration in time points, by default 50
+
+    Returns
+    -------
+    bool
+        True if animal was immobile before perturbation
+    """
+    vel = np.gradient(bhv_arr, axis=0)
+    speed = np.linalg.norm(vel, axis=1)
+
+    immobile_starts = starts_of_below_thresh_windows(speed, thresh, win)  # indices
+    return np.any((immobile_starts > event_onset[0]) & (immobile_starts < event_onset[1]))
+
+
+def valley_between_means(x, mu1, mu2, bins=300, smooth_win=31, poly=3):
+    """
+    Find the minimum of the distribution between two x-values by first smoothing it
+    """
+
+    x = np.asarray(x)
+    lo, hi = min(mu1, mu2), max(mu1, mu2)
+
+    hist, edges = np.histogram(x, bins=bins, density=True)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+
+    # Smooth histogram. Thanks for suggestion, works better
+    if smooth_win >= bins:
+        smooth_win = bins - 1
+    if smooth_win % 2 == 0:
+        smooth_win += 1
+    hist_s = savgol_filter(hist, smooth_win, poly)
+
+    # Restrict to interval between means
+    mask = (centers > lo) & (centers < hi)
+    if not np.any(mask):
+        raise ValueError("No histogram bins between means.")
+
+    idx = np.argmin(hist_s[mask])
+    x_valley = centers[mask][idx]
+    return x_valley
+
+
+def percentil_based_thresholding(arr, p):
+    return np.percentile(arr, p)
+
+
+def compute_immobile_thresh(td, p=5, plot=True):
+    # compute speed and velocity
+    vel = np.gradient(np.concatenate(td.bhv.values), axis=0)
+    speed = np.linalg.norm(vel, axis=1)
+
+    # Check bimodality and compute thresholds
+    bimodal, mus = assess_bimodality(np.log(speed))
+    if bimodal:
+        x_min = valley_between_means(np.log(speed), mus[0], mus[1])
+        thresh = 10**x_min
+    else:
+        x_min = percentil_based_thresholding(np.log(speed), p=p)
+        thresh = 10**x_min
+
+    print(f"Thresh: {thresh:.2f}")
+    if plot:
+        fig, ax = plt.subplots()
+        ax.hist(np.log(speed), bins=100)
+        ax.axvline(x_min, color="red", linestyle="--", label="Immobile thresh")
+        ax.set_xlabel("Log speed")
+        ax.legend()
+    return thresh
+
+
+def drop_immobile_trials_from_td(td, event_onset=(100, 200), win=50, p=5):
+    initial_count = len(td)
+
+    thresh = compute_immobile_thresh(td, p=p)
+
+    filtered_df = td[
+        td["bhv"].apply(
+            lambda arr: ~immobile_starts_before_event(
+                arr, thresh=thresh, event_onset=event_onset, win=win
+            )
+        )
+    ]
+
+    dropped_count = initial_count - len(filtered_df)
+    print(
+        f"Dropped {dropped_count} of {initial_count} rows ({dropped_count/initial_count:.2%})."
+    )
+    return filtered_df

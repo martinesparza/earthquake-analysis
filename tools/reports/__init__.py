@@ -1,1 +1,1 @@
-from .quality_control import run_quality_control_on_session
+from .quality_control import *

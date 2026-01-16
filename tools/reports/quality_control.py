@@ -13,6 +13,7 @@ import tools.decoding as decode
 import tools.viz.utilityTools as vizutils
 import tools.dataTools as dt
 from tools.params import colors
+import tools.kinematics as kin
 
 
 def plot_frs_and_sensors_moving_window(
@@ -70,7 +71,9 @@ def plot_frs_and_sensors_moving_window(
     plt.suptitle(f"Firing rates and mot. sensors in {window_s} s window. {session}")
 
 
-def decode_sol_dir_pcs_and_bhv(td, areas=["bhv", "MOp", "SSp", "CP", "VAL"], step_bin=1):
+def decode_sol_dir_pcs_and_bhv(
+    td, areas=["bhv", "MOp", "SSp", "CP", "VAL"], step_bin=1, cv=5, window_length_bin=10
+):
     """Decodes solenoid direction from pcs and behaviour
 
     Parameters
@@ -94,74 +97,22 @@ def decode_sol_dir_pcs_and_bhv(td, areas=["bhv", "MOp", "SSp", "CP", "VAL"], ste
             scores[area], times = decode.moving_window_decoding(
                 np.stack(td[f"{area}_rates_pca"]),
                 targets,
-                window_length_bin=10,
+                window_length_bin=window_length_bin,
                 step_bin=step_bin,
-                cv=4,
+                cv=cv,
             )
         else:
             scores[area], times = decode.moving_window_decoding(
-                np.stack(td[area]), targets, window_length_bin=10, step_bin=step_bin, cv=2
+                np.stack(td[area]),
+                targets,
+                window_length_bin=window_length_bin,
+                step_bin=step_bin,
+                cv=cv,
             )
     return scores, times
 
 
-def starts_of_below_thresh_windows(arr, thresh, win):
-    """
-    Return start indices i such that arr[i:i+win] are ALL < thresh (sliding window).
-
-    Parameters
-    ----------
-    arr : array-like, shape (T,)
-    thresh : float
-    win : int
-        Window length (in samples).
-
-    Returns
-    -------
-    starts : np.ndarray
-        Start indices of all valid windows.
-        (Length up to T-win+1.)
-    """
-    arr = np.asarray(arr)
-    if win <= 0:
-        raise ValueError("win must be >= 1")
-
-    mask = arr < thresh
-    if win == 1:
-        return np.flatnonzero(mask)
-
-    # counts[j] = number of True values in mask[j:j+win]
-    counts = np.convolve(mask.astype(np.int32), np.ones(win, dtype=np.int32), mode="valid")
-    return np.flatnonzero(counts == win)
-
-
-def immobile_starts_before_event(bhv_arr, event_onset=200, thresh=9.8, win=40):
-    vel = np.gradient(bhv_arr, axis=0)
-    speed = np.linalg.norm(vel, axis=1)
-
-    immobile_starts = starts_of_below_thresh_windows(speed, thresh, win)  # indices
-    return np.any((immobile_starts > (event_onset - 100)) & (immobile_starts < event_onset))
-
-
-def drop_immobile_trials(td, event_onset=200, thresh=9.8, win=50):
-    initial_count = len(td)
-
-    filtered_df = td[
-        td["bhv"].apply(
-            lambda arr: ~immobile_starts_before_event(
-                arr, event_onset=event_onset, thresh=thresh, win=win
-            )
-        )
-    ]
-
-    dropped_count = initial_count - len(filtered_df)
-    print(
-        f"Dropped {dropped_count} of {initial_count} rows ({dropped_count/initial_count:.2%})."
-    )
-    return filtered_df
-
-
-def plot_decoding_sol_dir(td, areas, session):
+def plot_decoding_sol_dir(td, areas, session, p=5):
     """Plots decoding solenoids direction
 
     Parameters
@@ -179,7 +130,7 @@ def plot_decoding_sol_dir(td, areas, session):
     except Exception as e:
         print("No behaviour found")
     # td = dt.remove_trials_wo_motion_before_event(td, "idx_motion", "idx_sol_on")
-    td = drop_immobile_trials(td, event_onset=200, thresh=9.8, win=40)
+    td = kin.drop_immobile_trials_from_td(td, win=40, p=p, event_onset=(100, 200))
     perturb_td = pyal.restrict_to_interval(td, "idx_sol_on", rel_start=-100, rel_end=150)
 
     scores, times = decode_sol_dir_pcs_and_bhv(perturb_td, areas=areas)
@@ -209,7 +160,7 @@ def plot_decoding_sol_dir(td, areas, session):
 
 def plot_mot_sensors_and_kinematics_random_trials(td):
     td_tr = pyal.select_trials(td, td.trial_name == "trial")
-    trials = np.random.randint(0, td_tr.shape[0], 10)
+    trials = np.random.randint(0, td_tr.shape[0], 7)
     for tr in trials:
         plot_mot_sensors_and_thresh(td_tr, tr)
 
@@ -235,7 +186,7 @@ def plot_mot_sensors_and_thresh(td, tr_idx, signal="left_knee"):
     ax[4].plot(bhv[:, 2])
 
 
-def run_quality_control_on_td(td, areas, session):
+def run_quality_control_on_td(td, areas, session, p=5):
     """Runs quality control analyses on trial data format
 
     Parameters
@@ -247,18 +198,18 @@ def run_quality_control_on_td(td, areas, session):
     """
 
     # Firing rates and sensorsy
-    # plot_frs_and_sensors_moving_window(td, areas=areas, session=session)
+    plot_frs_and_sensors_moving_window(td, areas=areas, session=session, window_s=1)
 
-    # Plot random trials
-    # plot_mot_sensors_and_kinematics_random_trials(td)
+    # # Plot random trials
+    plot_mot_sensors_and_kinematics_random_trials(td)
 
     # Solenoid direction
-    plot_decoding_sol_dir(td, areas=areas, session=session)
+    plot_decoding_sol_dir(td, areas=areas, session=session, p=p)
 
     return
 
 
-def run_quality_control_on_session(data_dir, session, areas=["MOp", "SSp", "CP", "VAL"]):
+def run_quality_control_on_session(data_dir, session, areas=["MOp", "SSp", "CP", "VAL"], p=5):
     """Entry point to quality control
 
     Parameters
@@ -277,5 +228,5 @@ def run_quality_control_on_session(data_dir, session, areas=["MOp", "SSp", "CP",
         combine_time_bins=False,
         repair_time_varying_fields=["MotSen1_X", "MotSen1_Y"],
     )
-    run_quality_control_on_td(td, areas, session)
+    run_quality_control_on_td(td, areas, session, p=p)
     return

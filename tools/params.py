@@ -79,6 +79,8 @@ class colors:
     M1 = "r"
     Dls = "g"
     all = "k"
+    MOs = "k"
+    MOs_light = "k"
     MOp = np.array([116, 40, 129]) / 255  # "forestgreen"
     MOp_light = np.array([152, 110, 172]) / 255
     MOp_light_light = np.array([195, 164, 207]) / 255  # "forestgreen"
