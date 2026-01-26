@@ -19,6 +19,12 @@ from tools.viz import utilityTools as utility
 
 def custom_r2_func(y_true, y_pred, multioutput="raw_values"):
     "$R^2$ value as squared correlation coefficient, as per Gallego, NN 2020"
+    if y_true.ndim == 1:
+        y_true = y_true.reshape(-1, 1)
+
+    if y_pred.ndim == 1:
+        y_pred = y_pred.reshape(-1, 1)
+
     c = np.corrcoef(y_true.T, y_pred.T) ** 2
     r2s = np.diag(c[-int(c.shape[0] / 2) :, : int(c.shape[1] / 2)])
 
@@ -36,7 +42,7 @@ def get_custom_scorer():
     return make_scorer(custom_r2_func, multioutput="variance_weighted")
 
 
-def decoding_moving_window(
+def decoding_moving_window_no_time_concat(
     model,
     X: np.ndarray,
     y: np.ndarray,
@@ -57,8 +63,57 @@ def decoding_moving_window(
     for t in tqdm(
         np.arange(min_time_bin, max_time_bin + 1 - window_length_bin, step=step_bin)
     ):
-        X_, y_ = X[:, t : t + window_length_bin, :], y[:, t : t + window_length_bin, :]
+
+        X_ = X[:, t : t + window_length_bin, :]
+        y_ = y
+
+        n_trials, n_time, n_comp = X_.shape
+        r2 = cross_val_score(
+            model,
+            X_.reshape(-1, n_time * (n_comp)),
+            y_,
+            scoring=scorer,
+            cv=cv,
+        )
+        r2_scores.append(r2)
+    scores = np.array(r2_scores)
+    time_points = np.arange(min_time_bin + window_length_bin, max_time_bin + 1, step_bin)
+
+    return scores, time_points * bin_size
+
+
+def decoding_moving_window(
+    model,
+    X: np.ndarray,
+    y: np.ndarray,
+    max_time_bin=None,
+    step_bin=1,
+    window_length_bin=20,
+    scorer=get_custom_scorer(),
+    cv=5,
+    bin_size=0.01,
+    min_time_bin=0,
+) -> tuple:
+
+    # X and y have shape (n_trials x time x n_comp)
+    r2_scores = []
+    if max_time_bin is None:
+        max_time_bin = X.shape[1]
+
+    if y.ndim == 2:
+        y_has_time_dim = False
+    elif y.ndim == 3:
+        y_has_time_dim = True
+
+    for t in tqdm(
+        np.arange(min_time_bin, max_time_bin + 1 - window_length_bin, step=step_bin)
+    ):
+
+        X_ = X[:, t : t + window_length_bin, :]
+        y_ = y[:, t : t + window_length_bin, :]
+
         n_trials, n_time, _ = X_.shape
+
         r2 = cross_val_score(
             model,
             X_.reshape(n_trials * n_time, -1),

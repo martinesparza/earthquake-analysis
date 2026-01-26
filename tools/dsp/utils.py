@@ -1,6 +1,52 @@
 import numpy as np
 
 
+def compute_morlet_power(
+    x: np.ndarray,
+    fs: float,
+    freqs: np.ndarray,
+    n_cycles: float = 3.0,
+    wavelet_support: float = 4.0,
+) -> np.ndarray:
+
+    x = np.asarray(x, dtype=float)
+    if x.ndim == 1:
+        x = x[:, None]  # (T, 1)
+
+    T, feat = x.shape
+    freqs = np.atleast_1d(freqs).astype(float)
+    F = freqs.size
+
+    # denean per feature
+    x0 = x - x.mean(axis=0, keepdims=True)
+    power = np.empty((F, T, feat), dtype=float)
+
+    for i, f in enumerate(freqs):
+
+        sigma_t = n_cycles / (2 * np.pi * f)  # seconds
+        t_max = wavelet_support * sigma_t
+        t = np.arange(-t_max, t_max, 1.0 / fs)
+
+        wavelet = np.exp(2j * np.pi * f * t) * np.exp(-(t**2) / (2 * sigma_t**2))
+        # Unit-energy normalisation => comparable power across frequencies
+        wavelet /= np.sqrt(np.sum(np.abs(wavelet) ** 2))
+
+        # Compute it in freqeucny domain
+        n_conv = T + wavelet.size - 1
+        n_fft = 1 << int(np.ceil(np.log2(n_conv)))
+        X = np.fft.fft(x0, n_fft, axis=0)  # (n_fft, feat)
+        W = np.fft.fft(wavelet, n_fft)[:, None]  # (n_fft, 1)
+        conv = np.fft.ifft(X * W, axis=0)[:n_conv]  # (n_conv, feat)
+
+        # crop to original length
+        start = (wavelet.size - 1) // 2
+        conv = conv[start : start + T, :]  # (T, feat)
+
+        power[i, :, :] = np.abs(conv) ** 2
+
+    return power
+
+
 def moving_window_mean(data, window_size):
     """Compute rolling mean specifying window size and ata
 

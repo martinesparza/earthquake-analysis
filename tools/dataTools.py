@@ -10,6 +10,48 @@ from sklearn.decomposition import PCA
 from tools.dimensionality.pca import compute_pca
 
 
+def add_concat_trial_start(td: pd.DataFrame):
+    td = td.copy()
+    td["concat_trial_start"] = pd.Series([None] * len(td), dtype="object")
+
+    for idx, row in td.iterrows():
+        if row.trial_name != "trial":
+            continue
+        td.at[idx, "concat_trial_start"] = td.iloc[idx - 1].trial_length
+    return td
+
+
+def add_concat_perturb_time(td: pd.DataFrame):
+    td = td.copy()
+    td["concat_perturb_time"] = pd.Series([None] * len(td), dtype="object")
+
+    for idx, row in td.iterrows():
+        if row.trial_name != "trial":
+            continue
+        td.at[idx, "concat_perturb_time"] = td.iloc[idx - 1].trial_length + row.idx_sol_on
+    return td
+
+
+def concat_previous_intertrial_signal(td, signal, features: np.ndarray | None = None):
+    if features is None:
+        features = np.arange(td[signal].values[0].shape[-1])
+
+    td = td.copy()
+    new_signal = signal + "_concat"
+    td[new_signal] = pd.Series([None] * len(td), dtype="object")
+
+    for pos in range(len(td)):
+        row = td.iloc[pos]
+        if row.trial_name != "trial":
+            continue
+        prev_tf = td.iloc[pos - 1][signal][:, features]  # (T, n_features)
+        curr_tf = td.iloc[pos][signal][:, features]  # (T, n_features)
+
+        td.at[td.index[pos], new_signal] = np.concatenate([prev_tf, curr_tf], axis=0)
+
+    return td
+
+
 def _get_min_number_shared_trials(df, label_field):
     return df[label_field].value_counts().min()
 

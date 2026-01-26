@@ -4,11 +4,96 @@ Docstring for kinematics.utils
 
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 
 from sklearn.mixture import GaussianMixture
 from scipy.signal import savgol_filter
+import tools.dsp as dsp
+
+import scipy
 
 from scipy.stats import skew
+
+import numpy as np
+
+
+def compute_perturb_distrurb_score(
+    power, perturb_idx, start_idx, stop_idx=-100, dt: float = 0.01
+):
+    # z_score
+    # power = (power - power[start_idx:perturb_idx].mean(0)) / power[start_idx:perturb_idx].std(
+    #     0
+    # )
+    power = power - power[start_idx:perturb_idx].mean(0)
+    post = power[perturb_idx:stop_idx, :]
+
+    disturb_score = np.nansum(post, axis=0) * dt
+
+    return disturb_score
+
+
+def add_power_metric_to_td(td):
+    td = td.copy()
+    td["disturb_score"] = pd.Series(np.nan * len(td), dtype="object")
+
+    for idx, row in td.iterrows():
+        if row.power is None:
+            continue
+
+        td.at[idx, "disturb_score"] = compute_perturb_distrurb_score(
+            row.power,
+            row.concat_perturb_time,
+            start_idx=100,
+        )
+
+    return td
+
+
+def compute_peak_freq_pre_perturb(bhv_arr, perturb_idx: int, nperseg=None, noverlap=None):
+    freqs, psd = scipy.signal.welch(
+        bhv_arr[:perturb_idx], fs=100, nperseg=nperseg, noverlap=noverlap, axis=0
+    )
+    return freqs[np.argmax(psd, axis=0)]
+
+
+def compute_power_in_bhv_concat_td(td, freq_tresh=1, method="morlet", phase=True):
+    td = td.copy()
+    td["power"] = pd.Series([None] * len(td), dtype="object")
+    td["phases"] = pd.Series([None] * len(td), dtype="object")
+
+    total_trials = len(td)
+    n = 0
+    for idx, row in td.iterrows():
+        if row.trial_name != "trial":
+            continue
+        peak_freqs = compute_peak_freq_pre_perturb(
+            row.bhv_concat, perturb_idx=row.concat_perturb_time
+        )
+        if any(x < freq_tresh for x in peak_freqs):
+            n = n + 1
+            continue
+
+        powers, phases = [], []
+        for i, peak_freq in enumerate(peak_freqs):
+            if method == "morlet":
+                power = dsp.compute_morlet_power(
+                    row.bhv_concat[:, i], fs=100, freqs=peak_freq
+                )
+            # compute phases
+            _, instantaneous_phase = dsp.get_power_in_freq_range(
+                row.bhv_concat[:, i], 100, (peak_freq - 1, peak_freq + 1)
+            )
+            phases.append(instantaneous_phase)
+            powers.append(np.log10(np.squeeze(power)))
+
+        phases = np.array(phases)
+        powers = np.array(powers)
+        if phase:
+            td.at[idx, "phases"] = phases.T
+        td.at[idx, "power"] = powers.T
+
+    print(f"Skipped {n} trials {(n / total_trials) * 100:.2f}")
+    return td
 
 
 def assess_bimodality(x, n_init=5, random_state=0):
