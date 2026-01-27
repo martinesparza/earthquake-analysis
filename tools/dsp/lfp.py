@@ -35,7 +35,7 @@ def compute_hilbert_power(x):
         _type_: _description_
     """
     analytic_signal = hilbert(x, axis=0)
-    instantaneous_phase = np.unwrap(np.angle(analytic_signal))
+    instantaneous_phase = np.angle(analytic_signal)
     return np.abs(analytic_signal) ** 2, instantaneous_phase
 
 

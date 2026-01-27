@@ -24,7 +24,9 @@ def compute_perturb_distrurb_score(
     # power = (power - power[start_idx:perturb_idx].mean(0)) / power[start_idx:perturb_idx].std(
     #     0
     # )
+
     power = power - power[start_idx:perturb_idx].mean(0)
+    # power = power - power[(perturb_idx - 100) : perturb_idx].mean(0)
     post = power[perturb_idx:stop_idx, :]
 
     disturb_score = np.nansum(post, axis=0) * dt
