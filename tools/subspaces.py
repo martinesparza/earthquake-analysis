@@ -202,6 +202,12 @@ class ReducedRankCommSubspace:
         return self.projector_mx.T
 
 
+def compute_embedding_on_arr(arrx, arry, model):
+    model.fit(arrx, arry)
+    W = scipy.linalg.orth(model.coef_.T)
+    return W
+
+
 def compute_embedding(td, signal_x, signal_y, time_bin_window, model, k=None):
 
     X = np.stack(td[signal_x].values)

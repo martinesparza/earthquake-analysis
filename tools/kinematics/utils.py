@@ -18,7 +18,7 @@ import numpy as np
 
 
 def compute_perturb_distrurb_score(
-    power, perturb_idx, start_idx, stop_idx=-100, dt: float = 0.01
+    power, perturb_idx, start_idx, stop_idx=-200, dt: float = 0.01
 ):
     # z_score
     # power = (power - power[start_idx:perturb_idx].mean(0)) / power[start_idx:perturb_idx].std(
@@ -236,10 +236,10 @@ def compute_immobile_thresh(td, p=5, plot=True):
     return thresh
 
 
-def drop_immobile_trials_from_td(td, event_onset=(100, 200), win=50, p=5):
+def drop_immobile_trials_from_td(td, event_onset=(100, 200), win=50, p=5, plot=False):
     initial_count = len(td)
 
-    thresh = compute_immobile_thresh(td, p=p)
+    thresh = compute_immobile_thresh(td, p=p, plot=plot)
 
     filtered_df = td[
         td["bhv"].apply(

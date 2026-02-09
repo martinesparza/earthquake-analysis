@@ -209,7 +209,9 @@ def run_quality_control_on_td(td, areas, session, p=5):
     return
 
 
-def run_quality_control_on_session(data_dir, session, areas=["MOp", "SSp", "CP", "VAL"], p=5):
+def run_quality_control_on_session(
+    data_dir, session, areas=["MOp", "SSp", "CP", "VAL", "MOs"], p=5
+):
     """Entry point to quality control
 
     Parameters
