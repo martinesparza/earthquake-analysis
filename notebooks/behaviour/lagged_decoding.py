@@ -44,8 +44,7 @@ import tools.subspaces as subspaces
 import tools.viz.utilityTools as vizutils
 from tools.params import Params, colors
 
-data_dir = "/data/bnd-data/raw/"
-session = "M061_2025_03_06_14_00"
+
 
 ALL_BHV_FIELDS = [
     "left_ankle",
@@ -73,6 +72,12 @@ HIND_KEYWORDS = [
     "ankle",
     "knee",
 ]
+
+def opt_ridge_alpha(x_cv, y_cv):
+    alphas = np.logspace(-4, 6, 50)
+    ridge_cv = RidgeCV(alphas=alphas)
+    ridge_cv.fit(x_cv, y_cv)
+    return ridge_cv.alpha_
 
 
 def shift_time_no_wrap(arr, shift, fill_value=np.nan):
@@ -104,141 +109,11 @@ def shift_time_no_wrap(arr, shift, fill_value=np.nan):
     return out
 
 
-def get_limb(forelimb: bool, laterality: str):
-    if forelimb:
-        body_parts = FORE_KEYWORDS
-    else:
-        body_parts = HIND_KEYWORDS
-
-    bhv_fields = [
-        field
-        for field in ALL_BHV_FIELDS
-        if (laterality in field)
-        and any(body_part in field for body_part in body_parts)
-    ]
-    return bhv_fields
-
-
-feature_dims = np.arange(start=2, stop=len(ALL_BHV_FIELDS) * 3, step=3)
-df_ = pyal.load_pyaldata(data_dir + session[:4] + "/" + session)
-df_ = dsp.preprocess(
-    df_,
-    only_trials=False,
-    combine_time_bins=False,
-    # repair_time_varying_fields=['MotSen1_X', 'MotSen1_Y']
-)
-df__ = dt.add_pca_df(df_)
-df = dt.add_bhv(df__, bhv_fields=ALL_BHV_FIELDS)
-df = dt.concat_previous_intertrial_signal(df, "MOp_rates_pca")
-df = dt.concat_previous_intertrial_signal(df, "SSp_rates_pca")
-df = dt.concat_previous_intertrial_signal(df, "CP_rates_pca")
-df = dt.concat_previous_intertrial_signal(df, "VAL_rates_pca")
-
-df = dt.concat_previous_intertrial_signal(df, "bhv", features=feature_dims)
-
-for field in ALL_BHV_FIELDS + [
-    "hip_center",
-    "shoulder_center",
-    "tail_middle",
-    "tail_tip",
-]:
-    df = dt.concat_previous_intertrial_signal(df, field)
-
-
-# Compute metric
-df = dt.add_concat_perturb_time(df)
-df = dt.add_concat_trial_start(df)
-df = kin.compute_power_in_bhv_concat_td(df)
-df = kin.add_power_metric_to_td(df)
-
-# Select trials and drop nans
-df = dt.add_bhv(
-    df,
-    bhv_fields=get_limb(forelimb=True, laterality="left")
-    + get_limb(forelimb=True, laterality="right"),
-)
-# df.drop(columns=['bhv_concat'], inplace=True)
-df = dt.concat_previous_intertrial_signal(df, "bhv")
-df_tr = pyal.select_trials(df, df.trial_name == "trial")
-df_tr = kin.drop_immobile_trials_from_td(df_tr, p=1, win=10)
-mask = df_tr["disturb_score"].apply(lambda x: not np.any(np.isnan(x)))
-df_tr = df_tr.loc[mask]
-
-# Slice fields
-df_tr_sliced = df_tr.copy()
-fields = [
-    "power",
-    "phases",
-    "MOp_rates_pca_concat",
-    "SSp_rates_pca_concat",
-    "VAL_rates_pca_concat",
-    "CP_rates_pca_concat",
-    "bhv_concat",
-]
-for field in fields:
-    df_tr_sliced[field] = df_tr_sliced.apply(
-        lambda row: row[field][
-            row["concat_perturb_time"]
-            - 300 : row["concat_perturb_time"]
-            + 400,
-            :,
-        ],
-        axis=1,
-    )
-
-
-for field in ALL_BHV_FIELDS + [
-    "hip_center",
-    "shoulder_center",
-    "tail_middle",
-    "tail_tip",
-]:
-    df_tr_sliced[f"{field}_concat"] = df_tr_sliced.apply(
-        lambda row: row[f"{field}_concat"][
-            row["concat_perturb_time"]
-            - 300 : row["concat_perturb_time"]
-            + 400,
-            :,
-        ],
-        axis=1,
-    )
-disturbances = np.sum(np.stack(df_tr_sliced.disturb_score.values), axis=1)
-dstrb_idx = np.argsort(disturbances)
-
-df_design = df_tr_sliced.copy()
-df_design = df_design.iloc[sorted(dstrb_idx[:])]
-# df_design = df_design.iloc[:]
-
-df_design["disturb_score"] = df_design["disturb_score"].apply(
-    lambda a: np.log10(np.abs(np.sum(a)))
-)
-df_design_ = df_design.sample(frac=1, random_state=42).reset_index(drop=True)
-
-
-time_bins = np.arange(300, 400, step=5)
-lags = np.arange(-30, 30, step=2)
-vw_r2_scorer = make_scorer(r2_score, multioutput="variance_weighted")
-custom_r2_scorer = decode.get_custom_scorer()
-
-scorers = {
-    "r2_vw": vw_r2_scorer,
-    "r2_custom": custom_r2_scorer,
-    "mse": "neg_mean_squared_error",
-}
-
-
-def opt_ridge_alpha(x_cv, y_cv):
-    alphas = np.logspace(-4, 6, 50)
-    ridge_cv = RidgeCV(alphas=alphas)
-    ridge_cv.fit(x_cv, y_cv)
-    return ridge_cv.alpha_
-
-
 def score_one_lag(val_, t, lag, y):
     # Build X for this lag/timebin
     val = shift_time_no_wrap(val_, lag)
-    val = np.array([dt.add_history(arr, n_hist=1) for arr in val])
-    val = val[:, t : t + 30, :]
+    # val = np.array([dt.add_history(arr, n_hist=3) for arr in val])
+    val = val[:, t:t+window, :]
     X = val.reshape(-1, val.shape[-1])
 
     # Fit/evaluate, and keep estimators to compute fold test predictions
@@ -275,34 +150,109 @@ def score_one_lag(val_, t, lag, y):
     mse_oof = mean_squared_error(y_true_oof, y_pred_oof)
 
     return {
-        "r2_vw": cv_out["test_r2_vw"],  # (cv,)
-        "r2_custom": cv_out["test_r2_custom"],  # (cv,)
-        "mse": cv_out["test_mse"],  # flip to positive MSE per fold
-        "y_true_oof": y_true_oof,  # (N, y_dim)
-        "y_pred_oof": y_pred_oof,  # (N, y_dim)
-        "test_idx_oof": test_indices,  # (N,)
-        "mse_oof": mse_oof,  # scalar (OOF)
+        "r2_vw": cv_out["test_r2_vw"],                 # (cv,)
+        "r2_custom": cv_out["test_r2_custom"],         # (cv,)
+        "mse": cv_out["test_mse"],                    # flip to positive MSE per fold
+        "y_true_oof": y_true_oof,                      # (N, y_dim)
+        "y_pred_oof": y_pred_oof,                      # (N, y_dim)
+        "test_idx_oof": test_indices,                  # (N,)
+        "mse_oof": mse_oof,                            # scalar (OOF)
     }
 
+########################### Begin pipeline ###############################
+ 
+data_dir = "/data/bnd-data/raw/"
+session = "M061_2025_03_06_14_00"
+
+df_ = pyal.load_pyaldata(data_dir + session[:4] + "/" + session)
+df_ = dsp.preprocess(
+    df_,
+    only_trials=False,
+    combine_time_bins=False, 
+    # repair_time_varying_fields=['MotSen1_X', 'MotSen1_Y']
+)
+
+df__ = dt.add_pca_df(df_)
+
+df = dt.add_bhv(df__, bhv_fields=ALL_BHV_FIELDS)
+df = dt.concat_previous_intertrial_signal(df, 'MOp_rates_pca')
+df = dt.concat_previous_intertrial_signal(df, 'SSp_rates_pca')
+df = dt.concat_previous_intertrial_signal(df, 'CP_rates_pca')
+df = dt.concat_previous_intertrial_signal(df, 'VAL_rates_pca')
+df = dt.concat_previous_intertrial_signal(df, 'bhv', features=feature_dims)
+
+# Compute metric
+df = dt.add_concat_perturb_time(df)
+df = dt.add_concat_trial_start(df)
+df = kin.compute_power_in_bhv_concat_td(df)
+df = kin.add_power_metric_to_td(df)
+
+# Select trials and drop nans
+# df = dt.add_bhv(df, bhv_fields=['hip_center'])
+df = dt.concat_previous_intertrial_signal(df, 'bhv')
+df_tr = pyal.select_trials(df, df.trial_name == 'trial')
+df_tr = kin.drop_immobile_trials_from_td(df_tr, p=2, win=10)
+mask = df_tr["disturb_score"].apply(
+    lambda x: not np.any(np.isnan(x))
+)
+df_tr = df_tr.loc[mask]
+
+# Slice fields
+df_tr_sliced = df_tr.copy()
+fields = [
+    'power',
+    'phases', 
+    'MOp_rates_pca_concat',
+    'SSp_rates_pca_concat',
+    'VAL_rates_pca_concat',
+    'CP_rates_pca_concat',
+    'bhv_concat'
+    ]
+for field in fields:
+    df_tr_sliced[field] = df_tr.apply(
+        lambda row: row[field][row["concat_perturb_time"] - 300:row["concat_perturb_time"] + 400, :],
+        axis=1
+    )
+
+
+disturbances = np.sum(np.stack(df_tr_sliced.disturb_score.values), axis=1)
+dstrb_idx = np.argsort(disturbances)
+
+df_design = df_tr_sliced.copy()
+df_design = df_design.iloc[sorted(dstrb_idx[:175])]
+
+
+df_design['disturb_score'] = df_design['disturb_score'].apply(lambda a: np.log10(np.abs(np.sum(a))))
+df_design_ = df_design.sample(frac=1, random_state=42).reset_index(drop=True)
+
+# import numpy as np
+# from sklearn.metrics import make_scorer, r2_score, mean_squared_error
+# from tqdm.auto import tqdm
+
+time_bins = np.arange(100, 400, step=1)
+lags = np.arange(-25, 25, step=1)
+window=20
+
+perturb_td = pyal.restrict_to_interval(df_design_, 'idx_sol_on', rel_start=-200, rel_end=300)
+power_ = np.stack(perturb_td.left_elbow.values)
+
+vw_r2_scorer = make_scorer(r2_score, multioutput="variance_weighted")
+custom_r2_scorer = decode.get_custom_scorer()
+
+scorers = {
+    "r2_vw": vw_r2_scorer,
+    "r2_custom": custom_r2_scorer,
+    "mse": "neg_mean_squared_error",
+}
 
 results_global = {}
-val_ = np.stack(df_design.MOp_rates_pca_concat.values)
+for area in ['MOp', 'SSp', 'CP', 'VAL']:
+    val_ = np.stack(perturb_td[f'{area}_rates_pca'].values)
 
-for keypoint in ALL_BHV_FIELDS + [
-    "hip_center",
-    "shoulder_center",
-    "tail_middle",
-    "tail_tip",
-    "power",
-]:
-    print(keypoint)
-    if keypoint != "power":
-        power_ = np.stack(df_design[f"{keypoint}_concat"].values)
-    else:
-        power_ = np.stack(df_design.power.values)
 
     alpha = opt_ridge_alpha(
-        val_.reshape(-1, val_.shape[-1]), power_.reshape(-1, power_.shape[-1])
+        val_.reshape(-1, val_.shape[-1]),
+        power_.reshape(-1, power_.shape[-1])
     )
     print(alpha)
 
@@ -311,37 +261,27 @@ for keypoint in ALL_BHV_FIELDS + [
     # IMPORTANT: make CV object once so the split is identical across lags (recommended)
     cv = KFold(n_splits=5, shuffle=False)
 
-    results_global[keypoint] = {}  # results[t][metric] -> arrays, plus preds
+
+    results_global[area] = {}  # results[t][metric] -> arrays, plus preds
 
     for t in tqdm(time_bins, desc="time bins"):
-        power = power_[:, t : t + 30, :]
+        power = power_[:, t:t+window, :]
         y = power.reshape(-1, power.shape[-1])
 
         per_lag = Parallel(n_jobs=-1, prefer="processes")(
             delayed(score_one_lag)(val_, t, lag, y) for lag in lags
         )
 
-        results_global[keypoint][t] = {
-            "r2_vw": np.stack(
-                [d["r2_vw"] for d in per_lag], axis=0
-            ),  # (n_lags, cv)
-            "r2_custom": np.stack(
-                [d["r2_custom"] for d in per_lag], axis=0
-            ),  # (n_lags, cv)
-            "mse": np.stack(
-                [d["mse"] for d in per_lag], axis=0
-            ),  # (n_lags, cv) positive
-            "mse_oof": np.array([d["mse_oof"] for d in per_lag]),  # (n_lags,)
-            "y_true_oof": [
-                d["y_true_oof"] for d in per_lag
-            ],  # list length n_lags, each (N, y_dim)
-            "y_pred_oof": [
-                d["y_pred_oof"] for d in per_lag
-            ],  # list length n_lags, each (N, y_dim)
-            "test_idx_oof": [
-                d["test_idx_oof"] for d in per_lag
-            ],  # list length n_lags, each (N,)
+        results_global[area][t] = {
+            "r2_vw": np.stack([d["r2_vw"] for d in per_lag], axis=0),          # (n_lags, cv)
+            "r2_custom": np.stack([d["r2_custom"] for d in per_lag], axis=0),  # (n_lags, cv)
+            "mse": np.stack([d["mse"] for d in per_lag], axis=0),              # (n_lags, cv) positive
+            "mse_oof": np.array([d["mse_oof"] for d in per_lag]),              # (n_lags,)
+            "y_true_oof": [d["y_true_oof"] for d in per_lag],                  # list length n_lags, each (N, y_dim)
+            "y_pred_oof": [d["y_pred_oof"] for d in per_lag],                  # list length n_lags, each (N, y_dim)
+            "test_idx_oof": [d["test_idx_oof"] for d in per_lag],              # list length n_lags, each (N,)
         }
+
 
 with open("lagged_results_all_keypoints_mop.pkl", "wb") as f:
     pickle.dump(results_global, f)
