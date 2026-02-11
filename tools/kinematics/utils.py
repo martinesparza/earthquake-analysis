@@ -51,36 +51,54 @@ def compute_peak_freq_pre_perturb(
     bhv_arr, perturb_idx: int, nperseg=None, noverlap=None
 ):
     freqs, psd = scipy.signal.welch(
-        bhv_arr[:perturb_idx],
+        bhv_arr[perturb_idx-300:perturb_idx],
         fs=100,
         nperseg=nperseg,
         noverlap=noverlap,
         axis=0,
     )
-    return freqs[np.argmax(psd, axis=0)]
+    return freqs[np.argmax(psd, axis=0)], freqs, psd
 
 
 def compute_power_in_bhv_concat_td(
-    td, freq_tresh=1, method="morlet", phase=True
+    td, freq_tresh=0.5, method="morlet", phase=True
 ):
     td = td.copy()
     td["power"] = pd.Series([None] * len(td), dtype="object")
     td["phases"] = pd.Series([None] * len(td), dtype="object")
 
-    total_trials = len(td)
     n = 0
     for idx, row in td.iterrows():
         if row.trial_name != "trial":
             continue
-        peak_freqs = compute_peak_freq_pre_perturb(
+        peak_freqs, freqs, psd = compute_peak_freq_pre_perturb(
             row.bhv_concat, perturb_idx=row.concat_perturb_time
         )
-        if any(x < freq_tresh for x in peak_freqs):
+        peak_mean_freq = freqs[np.argmax(psd.mean(-1), axis=0)]
+        if peak_mean_freq < 2:
             n = n + 1
             continue
+        # if any(x < freq_tresh for x in peak_freqs):
+        #     # idx = np.argsort(psd[:, 0], axis=0)[-2:]   # indices of top 2 values per column
+        #     # top2_freqs = freqs[sorted(idx)]
+        #     # print(top2_freqs, idx)
+        #     n = n + 1
+        #     # low_peak_idx = np.where(peak_freqs < freq_tresh)[0]
+        #     # print(peak_freqs)
+        #     fig, ax = plt.subplots(2, 1, figsize=(8, 4))
+        #     ax[0].plot(freqs, psd, alpha=0.5, color='gray')
+        #     ax[0].plot(freqs, psd.mean(-1), color='k')
+        #     ax[1].plot(row.bhv_concat)
+        #     ax[1].axvline(row.concat_perturb_time, color='k', linestyle='dashed')
+        #     peak_mean_freq = freqs[np.argmax(psd.mean(-1), axis=0)]
+        #     ax[0].set_title(peak_mean_freq < 2)
+        #     plt.show()
+        #     continue
+        
 
         powers, phases = [], []
         for i, peak_freq in enumerate(peak_freqs):
+            peak_freq = peak_mean_freq  # remove this to get the per_keypoint_freq
             if method == "morlet":
                 power = dsp.compute_morlet_power(
                     row.bhv_concat[:, i], fs=100, freqs=peak_freq
@@ -98,7 +116,7 @@ def compute_power_in_bhv_concat_td(
             td.at[idx, "phases"] = phases.T
         td.at[idx, "power"] = powers.T
 
-    print(f"Skipped {n} trials {(n / total_trials) * 100:.2f}")
+    print(f"Skipped {n} trials")
     return td
 
 
