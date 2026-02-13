@@ -161,8 +161,9 @@ def score_one_lag(val_, t, lag, y):
 
 ########################### Begin pipeline ###############################
  
-data_dir = "/data/bnd-data/raw/"
+data_dir = "/data/raw/"
 session = "M061_2025_03_06_14_00"
+feature_dims = np.arange(start=2, stop=len(ALL_BHV_FIELDS) * 3, step=3)
 
 df_ = pyal.load_pyaldata(data_dir + session[:4] + "/" + session)
 df_ = dsp.preprocess(
@@ -229,12 +230,10 @@ df_design_ = df_design.sample(frac=1, random_state=42).reset_index(drop=True)
 # from sklearn.metrics import make_scorer, r2_score, mean_squared_error
 # from tqdm.auto import tqdm
 
-time_bins = np.arange(100, 400, step=1)
+time_bins = np.arange(100, 450, step=1)
 lags = np.arange(-25, 25, step=1)
 window=20
 
-perturb_td = pyal.restrict_to_interval(df_design_, 'idx_sol_on', rel_start=-200, rel_end=300)
-power_ = np.stack(perturb_td.left_elbow.values)
 
 vw_r2_scorer = make_scorer(r2_score, multioutput="variance_weighted")
 custom_r2_scorer = decode.get_custom_scorer()
@@ -244,44 +243,53 @@ scorers = {
     "r2_custom": custom_r2_scorer,
     "mse": "neg_mean_squared_error",
 }
+perturb_td = pyal.restrict_to_interval(df_design_, 'idx_sol_on', rel_start=-200, rel_end=300)
+areas = ['MOp', 'SSp', 'CP', 'VAL']
 
 results_global = {}
-for area in ['MOp', 'SSp', 'CP', 'VAL']:
-    val_ = np.stack(perturb_td[f'{area}_rates_pca'].values)
+
+for keypoint in ALL_BHV_FIELDS + ['hip_center', 'shoulder_center', 'tail_base', 'tail_middle', 'tail_tip', 'left_shoulder', 'right_shoulder']:
+    print(keypoint)
+    results_global[keypoint] = {}
+    
+    power_ = np.stack(perturb_td[f'{keypoint}'].values)
+    for area in areas:
+        print(area)
+        val_ = np.stack(perturb_td[f'{area}_rates_pca'].values)
 
 
-    alpha = opt_ridge_alpha(
-        val_.reshape(-1, val_.shape[-1]),
-        power_.reshape(-1, power_.shape[-1])
-    )
-    print(alpha)
-
-    model = Ridge(alpha=alpha)
-
-    # IMPORTANT: make CV object once so the split is identical across lags (recommended)
-    cv = KFold(n_splits=5, shuffle=False)
-
-
-    results_global[area] = {}  # results[t][metric] -> arrays, plus preds
-
-    for t in tqdm(time_bins, desc="time bins"):
-        power = power_[:, t:t+window, :]
-        y = power.reshape(-1, power.shape[-1])
-
-        per_lag = Parallel(n_jobs=-1, prefer="processes")(
-            delayed(score_one_lag)(val_, t, lag, y) for lag in lags
+        alpha = opt_ridge_alpha(
+            val_.reshape(-1, val_.shape[-1]),
+            power_.reshape(-1, power_.shape[-1])
         )
+        print(alpha)
 
-        results_global[area][t] = {
-            "r2_vw": np.stack([d["r2_vw"] for d in per_lag], axis=0),          # (n_lags, cv)
-            "r2_custom": np.stack([d["r2_custom"] for d in per_lag], axis=0),  # (n_lags, cv)
-            "mse": np.stack([d["mse"] for d in per_lag], axis=0),              # (n_lags, cv) positive
-            "mse_oof": np.array([d["mse_oof"] for d in per_lag]),              # (n_lags,)
-            "y_true_oof": [d["y_true_oof"] for d in per_lag],                  # list length n_lags, each (N, y_dim)
-            "y_pred_oof": [d["y_pred_oof"] for d in per_lag],                  # list length n_lags, each (N, y_dim)
-            "test_idx_oof": [d["test_idx_oof"] for d in per_lag],              # list length n_lags, each (N,)
-        }
+        model = Ridge(alpha=alpha)
+
+        # IMPORTANT: make CV object once so the split is identical across lags (recommended)
+        cv = KFold(n_splits=5, shuffle=False)
 
 
-with open("lagged_results_all_keypoints_mop.pkl", "wb") as f:
+        results_global[keypoint][area] = {}  # results[t][metric] -> arrays, plus preds
+
+        for t in tqdm(time_bins, desc="time bins"):
+            power = power_[:, t:t+window, :]
+            y = power.reshape(-1, power.shape[-1])
+
+            per_lag = Parallel(n_jobs=-1, prefer="processes")(
+                delayed(score_one_lag)(val_, t, lag, y) for lag in lags
+            )
+
+            results_global[keypoint][area][t] = {
+                "r2_vw": np.stack([d["r2_vw"] for d in per_lag], axis=0),          # (n_lags, cv)
+                "r2_custom": np.stack([d["r2_custom"] for d in per_lag], axis=0),  # (n_lags, cv)
+                "mse": np.stack([d["mse"] for d in per_lag], axis=0),              # (n_lags, cv) positive
+                "mse_oof": np.array([d["mse_oof"] for d in per_lag]),              # (n_lags,)
+                "y_true_oof": [d["y_true_oof"] for d in per_lag],                  # list length n_lags, each (N, y_dim)
+                "y_pred_oof": [d["y_pred_oof"] for d in per_lag],                  # list length n_lags, each (N, y_dim)
+                "test_idx_oof": [d["test_idx_oof"] for d in per_lag],              # list length n_lags, each (N,)
+            }
+
+
+with open("lagged_results_all_areas_all_keypoints.pkl", "wb") as f:
     pickle.dump(results_global, f)
