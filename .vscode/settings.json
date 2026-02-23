@@ -2,5 +2,7 @@
     // "autoDocstring.docstringFormat": "google",
     "python.analysis.extraPaths": [
         "./tools"
-    ] // options: "google", "numpy", "sphinx"
+    ],
+    "python-envs.defaultEnvManager": "ms-python.python:system",
+    "python-envs.pythonProjects": [] // options: "google", "numpy", "sphinx"
 }

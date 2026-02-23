@@ -66,15 +66,15 @@ def decoding_moving_window_no_time_concat(
 
         X_ = X[:, t : t + window_length_bin, :]
         y_ = y
-
         n_trials, n_time, n_comp = X_.shape
         r2 = cross_val_score(
             model,
             X_.reshape(-1, n_time * (n_comp)),
-            y_,
+            y_.reshape(n_trials, -1),
             scoring=scorer,
             cv=cv,
         )
+
         r2_scores.append(r2)
     scores = np.array(r2_scores)
     time_points = np.arange(min_time_bin + window_length_bin, max_time_bin + 1, step_bin)

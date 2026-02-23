@@ -2,13 +2,133 @@
 Module about communication subspaces
 """
 
+from matplotlib import pyplot as plt
 import numpy as np
 from scipy import sparse
 import scipy
 from scipy.linalg import null_space, orth
-from sklearn.base import BaseEstimator
+from sklearn.metrics import r2_score, make_scorer
+from sklearn.model_selection import cross_val_score
 
+import tools.subspaces as subspaces
 import tools.dimensionality as dim
+import tools.decoding as decode
+
+
+def compute_rrr_between_areas_td(td, origin_signal, target_signal, rank, scorer):
+    r2 = cross_val_score(
+        decode.ReducedRankRegressorBence(rank=rank, reg=100),
+        np.concatenate(td[origin_signal].values),
+        np.concatenate(td[target_signal].values)[:, :rank],
+        cv=5,
+        scoring=scorer,
+    )
+    return r2
+
+
+def publicise_signal_td(
+    td_,
+    origin_signal,
+    target_signal,
+    rank,
+    window_emb=(0, 500),
+    scorer=make_scorer(r2_score, multioutput="variance_weighted"),
+):
+    td = td_.copy()
+    td[f"{origin_signal}_potent_{target_signal}"] = td[origin_signal]
+
+    ##### compute private subspace ######
+    emb = subspaces.compute_embedding(
+        td,
+        f"{origin_signal}_potent_{target_signal}",
+        target_signal,
+        (window_emb[0], window_emb[-1]),
+        subspaces.ReducedRankCommSubspace(rank=rank),
+        null=False,
+    )
+    td = subspaces.project_signal(
+        td,
+        emb,
+        f"{origin_signal}_potent_{target_signal}",
+        f"{origin_signal}_potent_{target_signal}",
+    )
+
+    r2 = compute_rrr_between_areas_td(td, origin_signal, target_signal, rank, scorer)
+    dim_potent = np.stack(td[f"{origin_signal}_potent_{target_signal}"].values).shape[-1]
+    var = variance_in_subspace(
+        np.concatenate(td[f"{origin_signal}_potent_{target_signal}"].values),
+        np.eye(dim_potent),
+    )
+    return td  # , r2, var
+
+
+def privatise_signal_td(
+    td_,
+    n_iter,
+    origin_signal,
+    target_signal,
+    rank,
+    window_emb=(0, 500),
+    scorer=make_scorer(r2_score, multioutput="variance_weighted"),
+    diagnostics=False,
+):
+    td = td_.copy()
+    td[f"{origin_signal}_null_{target_signal}"] = td[origin_signal]
+
+    if diagnostics:
+        r2s, vars = [], []
+        dim_origin_signal = np.stack(td[origin_signal].values).shape[-1]
+        r2 = compute_rrr_between_areas_td(td, origin_signal, target_signal, rank, scorer)
+        var = variance_in_subspace(
+            np.concatenate(td[origin_signal].values), np.eye(dim_origin_signal)
+        )
+        r2s.append(r2)
+        vars.append(var)
+
+    ##### compute private subspace ######
+    for i in range(n_iter):
+        emb = subspaces.compute_embedding(
+            td,
+            f"{origin_signal}_null_{target_signal}",
+            target_signal,
+            (window_emb[0], window_emb[-1]),
+            subspaces.ReducedRankCommSubspace(rank=rank),
+            null=True,
+        )
+        td = subspaces.project_signal(
+            td,
+            emb,
+            f"{origin_signal}_null_{target_signal}",
+            f"{origin_signal}_null_{target_signal}",
+        )
+
+        if diagnostics:
+            dim_null = np.stack(td[f"{origin_signal}_null_{target_signal}"].values).shape[-1]
+            r2 = compute_rrr_between_areas_td(
+                td, f"{origin_signal}_null_{target_signal}", target_signal, rank, scorer
+            )
+            var = variance_in_subspace(
+                np.concatenate(td[f"{origin_signal}_null_{target_signal}"].values),
+                np.eye(dim_null),
+            )
+            r2s.append(r2)
+            vars.append(var)
+
+    if diagnostics:
+        r2s, vars = np.array(r2s), np.array(vars)
+        fig, ax = plt.subplots(1, 2)
+        plt.suptitle(f"Removing {origin_signal} activity predictive of {target_signal}")
+        ax[0].errorbar(range(n_iter + 1), r2s.mean(-1), yerr=r2s.std(-1), fmt="o-")
+        ax[0].set_ylim(-0.1, 0.4)
+        ax[0].axhline(0, color="r", linestyle="dashed")
+        ax[0].set_xlabel("Iterations")
+        ax[0].set_ylabel("R2")
+        ax[1].errorbar(range(n_iter + 1), np.array(vars), fmt="o-")
+        ax[1].set_xlabel("Iterations")
+        ax[1].set_ylabel("Variance")
+        plt.tight_layout()
+
+    return td  # if not diagnostics else (td, r2s, vars)
 
 
 def project_signal(trial_data_, W, signal, out_fieldname):
@@ -208,7 +328,7 @@ def compute_embedding_on_arr(arrx, arry, model):
     return W
 
 
-def compute_embedding(td, signal_x, signal_y, time_bin_window, model, k=None):
+def compute_embedding(td, signal_x, signal_y, time_bin_window, model, k=None, null=False):
 
     X = np.stack(td[signal_x].values)
     _, _, n_feat_in = X.shape
@@ -221,13 +341,25 @@ def compute_embedding(td, signal_x, signal_y, time_bin_window, model, k=None):
         pca_model = dim.compute_pca(X, n_components=k)
         W = pca_model.components_.T
     else:
-        y = np.stack(td[signal_y].values)
+        if isinstance(signal_y, list):
+            ys = []
+            for col in signal_y:
+                a = np.stack(td[col].values)  # (trials, T) or (trials, T, F)
+                if a.ndim == 2:
+                    a = a[..., None]
+                ys.append(a)
+            y = np.concatenate(ys, axis=-1)
+        else:
+            y = np.stack(td[signal_y].values)
         _, _, n_feat_out = y.shape
         y = y[:, time_bin_window[0] : time_bin_window[1], :]
         y = y.reshape(-1, n_feat_out)
 
         model.fit(X, y)
-        W = scipy.linalg.orth(model.coef_.T)
+        if not null:
+            W = scipy.linalg.orth(model.coef_.T)
+        else:
+            W = scipy.linalg.null_space(model.coef_.T)
 
     return W
 
