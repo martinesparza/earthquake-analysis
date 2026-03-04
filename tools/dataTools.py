@@ -10,6 +10,35 @@ from sklearn.decomposition import PCA
 from tools.dimensionality.pca import compute_pca
 
 
+def shift_time_no_wrap(arr, shift, fill_value=np.nan):
+    """
+    Shift along time axis=1 without wrap-around.
+    Positive shift moves data to later times (right).
+    Negative shift moves data to earlier times (left).
+    """
+    arr = np.asarray(arr)
+    out = np.full_like(
+        arr,
+        fill_value=fill_value,
+        dtype=float if np.isnan(fill_value) else arr.dtype,
+    )
+
+    if shift == 0:
+        return arr.copy()
+
+    T = arr.shape[1]
+
+    if shift > 0:
+        # t -> t+shift
+        out[:, shift:T, :] = arr[:, : T - shift, :]
+    else:
+        s = -shift
+        # t -> t-s
+        out[:, : T - s, :] = arr[:, s:T, :]
+
+    return out
+
+
 def add_concat_trial_start(td: pd.DataFrame):
     td = td.copy()
     td["concat_trial_start"] = pd.Series([None] * len(td), dtype="object")
@@ -323,13 +352,14 @@ def add_bhv(trial_data, bhv_fields=["all"]):
             "tail_middle",
             "tail_tip",
         ]
+    trial_data = trial_data.copy()
     bhv_list = []
     for trial in range(len(trial_data)):
-        design_matrix = np.empty((trial_data["right_knee"][trial].shape[0], 0))
+        design_matrix = np.empty((trial_data["right_knee"].values[trial].shape[0], 0))
         for bhv in bhv_fields:
-            design_matrix = np.column_stack((design_matrix, trial_data[bhv][trial]))
+            design_matrix = np.column_stack((design_matrix, trial_data[bhv].values[trial]))
         bhv_list.append(design_matrix)
-    trial_data["bhv"] = bhv_list
+    trial_data.loc[:, "bhv"] = bhv_list
     return trial_data
 
 

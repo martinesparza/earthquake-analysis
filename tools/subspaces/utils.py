@@ -13,13 +13,59 @@ from sklearn.model_selection import cross_val_score
 import tools.subspaces as subspaces
 import tools.dimensionality as dim
 import tools.decoding as decode
+import tools.dataTools as dt
+
+
+default_scorer = make_scorer(r2_score, multioutput="variance_weighted")
+
+
+def frac_in_subspace(X: np.ndarray, U: np.ndarray, eps: float = 1e-12):
+    """
+    X: (T, N) or (..., T, N)
+    U: (N, r) orthonormal basis for target subspace
+    returns f: (..., T)
+    """
+    # component in subspace
+    X_in = (X @ U) @ U.T
+    num = np.sum(X_in**2, axis=-1)
+    den = np.sum(X**2, axis=-1) + eps
+    return num / den
+
+
+def project_and_backproject_orthonormal(X: np.ndarray, U: np.ndarray):
+    """
+    X: (..., T, N) or (T, N)
+    U: (N, r) with orthonormal columns
+
+    returns:
+      Z: (..., T, r) motor coords
+      X_motor: (..., T, N) motor component in full space
+    """
+    # forward: z = x U
+    Z = X @ U  # (.., T, r)
+
+    # back: x_motor = z U^T
+    X_hat = Z @ U.T  # (.., T, N)
+
+    return Z, X_hat
 
 
 def compute_rrr_between_areas_td(td, origin_signal, target_signal, rank, scorer):
+    # Concatenate trials
+    X = np.concatenate(td[origin_signal].values)
+    Y = np.concatenate(td[target_signal].values)[:, :rank]
+
+    # Build mask: keep rows with no NaNs in either X or Y
+    mask = ~np.isnan(X).any(axis=1) & ~np.isnan(Y).any(axis=1)
+
+    # Apply mask
+    X_clean = X[mask]
+    Y_clean = Y[mask]
+
     r2 = cross_val_score(
         decode.ReducedRankRegressorBence(rank=rank, reg=100),
-        np.concatenate(td[origin_signal].values),
-        np.concatenate(td[target_signal].values)[:, :rank],
+        X_clean,
+        Y_clean,
         cv=5,
         scoring=scorer,
     )
@@ -33,9 +79,17 @@ def publicise_signal_td(
     rank,
     window_emb=(0, 500),
     scorer=make_scorer(r2_score, multioutput="variance_weighted"),
+    target_lag=None,
+    return_emb=False,
 ):
     td = td_.copy()
     td[f"{origin_signal}_potent_{target_signal}"] = td[origin_signal]
+
+    #### Add lag before embedding to avoid wraps
+    if target_lag is not None:
+        arr_original = td[target_signal]
+        arrs = dt.shift_time_no_wrap(np.stack(td[target_signal].values), shift=target_lag)
+        td[target_signal] = [arr for arr in arrs]
 
     ##### compute private subspace ######
     emb = subspaces.compute_embedding(
@@ -59,7 +113,9 @@ def publicise_signal_td(
         np.concatenate(td[f"{origin_signal}_potent_{target_signal}"].values),
         np.eye(dim_potent),
     )
-    return td  # , r2, var
+    if target_lag is not None:
+        td[target_signal] = arr_original
+    return (td, var) if not return_emb else (td, var, emb)
 
 
 def privatise_signal_td(
@@ -71,9 +127,16 @@ def privatise_signal_td(
     window_emb=(0, 500),
     scorer=make_scorer(r2_score, multioutput="variance_weighted"),
     diagnostics=False,
+    target_lag=None,
 ):
     td = td_.copy()
     td[f"{origin_signal}_null_{target_signal}"] = td[origin_signal]
+
+    if target_lag is not None:
+        arr_original = td[target_signal]
+
+        arrs = dt.shift_time_no_wrap(np.stack(td[target_signal].values), shift=target_lag)
+        td[target_signal] = [arr for arr in arrs]
 
     if diagnostics:
         r2s, vars = [], []
@@ -128,33 +191,9 @@ def privatise_signal_td(
         ax[1].set_ylabel("Variance")
         plt.tight_layout()
 
-    return td  # if not diagnostics else (td, r2s, vars)
-
-
-def project_signal(trial_data_, W, signal, out_fieldname):
-    """
-    Project a signal using a weight matrix
-
-    Parameters
-    ----------
-    trial_data : pd.DataFrame
-        data in trial_data format
-    W : np.array
-        projection matrix
-        shape: N x D
-    signal : str
-        signal to project
-    out_fieldname : str
-        name of the field in which to store the projections
-
-    Returns
-    -------
-    trial_data with the projections added
-    """
-    trial_data = trial_data_.copy()
-    trial_data[out_fieldname] = [s @ W for s in trial_data[signal].values]
-
-    return trial_data
+    if target_lag is not None:
+        td[target_signal] = arr_original
+    return td if not diagnostics else (td, vars[-1])
 
 
 def get_output_null_projector(regressor, var_X=None):
@@ -214,8 +253,26 @@ def variance_across_arrays_in_subspace(arrs, W):
     return np.sum(np.var(np.stack([arr @ W for arr in arrs], axis=-1), axis=-1), axis=1)
 
 
-def variance_in_subspace_df(df, signal, W):
+def variance_across_arrays(arrs):
+    """
+    Returns variance across trials and summed across components
+    """
+    return np.sum(np.var(arrs, axis=0), axis=1)
+
+
+def mean_across_arrays(arrs):
+    """
+    Returns variance across trials and summed across components
+    """
+    return np.sum(np.mean(arrs, axis=0), axis=1)
+
+
+def variance_in_subspace_df_arr(df, signal, W):
     return variance_across_arrays_in_subspace(df[signal].values, W)
+
+
+def variance_in_subspace_df(df, signal, W):
+    return variance_in_subspace(np.concatenate(df[signal].values), W)
 
 
 def variance_in_subspace(X, W):

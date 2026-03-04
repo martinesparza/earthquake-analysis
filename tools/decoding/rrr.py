@@ -527,7 +527,7 @@ class ReducedRankRegressorBenceGPU(BaseEstimator):
         X = cp.asarray(X)
         if X.ndim == 1:
             X = X.reshape(-1, 1)
-        return cp.array(((X - self.mean_input) @ self.projector_mx) + self.mean_output)
+        return cp.array(((X - self.mean_input) @ self.projector_mx) + self.mean_output).get()
 
     @property
     def coef_(self):

@@ -47,11 +47,9 @@ def add_power_metric_to_td(td):
     return td
 
 
-def compute_peak_freq_pre_perturb(
-    bhv_arr, perturb_idx: int, nperseg=None, noverlap=None
-):
+def compute_peak_freq_pre_perturb(bhv_arr, perturb_idx: int, nperseg=None, noverlap=None):
     freqs, psd = scipy.signal.welch(
-        bhv_arr[perturb_idx-300:perturb_idx],
+        bhv_arr[perturb_idx - 300 : perturb_idx],
         fs=100,
         nperseg=nperseg,
         noverlap=noverlap,
@@ -60,9 +58,7 @@ def compute_peak_freq_pre_perturb(
     return freqs[np.argmax(psd, axis=0)], freqs, psd
 
 
-def compute_power_in_bhv_concat_td(
-    td, freq_tresh=0.5, method="morlet", phase=True
-):
+def compute_power_in_bhv_concat_td(td, freq_tresh=0.5, method="morlet", phase=True):
     td = td.copy()
     td["power"] = pd.Series([None] * len(td), dtype="object")
     td["phases"] = pd.Series([None] * len(td), dtype="object")
@@ -94,7 +90,6 @@ def compute_power_in_bhv_concat_td(
         #     ax[0].set_title(peak_mean_freq < 2)
         #     plt.show()
         #     continue
-        
 
         powers, phases = [], []
         for i, peak_freq in enumerate(peak_freqs):
@@ -175,15 +170,11 @@ def starts_of_below_thresh_windows(arr, thresh: float, win: int):
         return np.flatnonzero(mask)
 
     # counts[j] = number of True values in mask[j:j+win]
-    counts = np.convolve(
-        mask.astype(np.int32), np.ones(win, dtype=np.int32), mode="valid"
-    )
+    counts = np.convolve(mask.astype(np.int32), np.ones(win, dtype=np.int32), mode="valid")
     return np.flatnonzero(counts == win)
 
 
-def immobile_starts_before_event(
-    bhv_arr, thresh, event_onset=(100, 200), win=50
-) -> bool:
+def immobile_starts_before_event(bhv_arr, thresh, event_onset=(100, 200), win=50) -> bool:
     """Detects if the animal is immobile in a give index window (before the perturbation)
 
     Parameters
@@ -205,12 +196,8 @@ def immobile_starts_before_event(
     vel = np.gradient(bhv_arr, axis=0)
     speed = np.linalg.norm(vel, axis=1)
 
-    immobile_starts = starts_of_below_thresh_windows(
-        speed, thresh, win
-    )  # indices
-    return np.any(
-        (immobile_starts > event_onset[0]) & (immobile_starts < event_onset[1])
-    )
+    immobile_starts = starts_of_below_thresh_windows(speed, thresh, win)  # indices
+    return np.any((immobile_starts > event_onset[0]) & (immobile_starts < event_onset[1]))
 
 
 def valley_between_means(x, mu1, mu2, bins=300, smooth_win=31, poly=3):
@@ -269,16 +256,14 @@ def compute_immobile_thresh(td, p=5, plot=True):
     return thresh
 
 
-def drop_immobile_trials_from_td(
-    td, event_onset=(100, 200), win=50, p=5, plot=False
-):
+def drop_immobile_trials_from_td(td, event_onset=(100, 200), win=50, p=5, plot=False):
     initial_count = len(td)
 
     thresh = compute_immobile_thresh(td, p=p, plot=plot)
 
     filtered_df = td[
         td["bhv"].apply(
-            lambda arr: ~immobile_starts_before_event(
+            lambda arr: not immobile_starts_before_event(
                 arr, thresh=thresh, event_onset=event_onset, win=win
             )
         )

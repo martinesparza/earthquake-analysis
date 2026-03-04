@@ -15,6 +15,7 @@ from tools import dataTools as dt
 from tools import params
 from tools.params import Params
 from tools.viz import utilityTools as utility
+import tools.decoding as decode
 
 
 def custom_r2_func(y_true, y_pred, multioutput="raw_values"):
@@ -57,6 +58,7 @@ def decoding_moving_window_no_time_concat(
 
     # X and y have shape (n_trials x time x n_comp)
     r2_scores = []
+    y_preds = []
     if max_time_bin is None:
         max_time_bin = X.shape[1]
 
@@ -74,12 +76,21 @@ def decoding_moving_window_no_time_concat(
             scoring=scorer,
             cv=cv,
         )
-
+        # y_pred = cross_val_predict(
+        #     model,
+        #     X_.reshape(-1, n_time * (n_comp)),
+        #     y_.reshape(n_trials, -1),
+        #     # scoring=scorer,
+        #     cv=cv,
+        # )
+        # y_preds.append(y_pred)
+        # r2 = decode.custom_r2_func(y_.reshape(n_trials, -1), y_pred)
         r2_scores.append(r2)
+    y_preds = np.array(y_preds)
     scores = np.array(r2_scores)
     time_points = np.arange(min_time_bin + window_length_bin, max_time_bin + 1, step_bin)
 
-    return scores, time_points * bin_size
+    return scores, time_points * bin_size, y_preds
 
 
 def decoding_moving_window(
@@ -99,11 +110,6 @@ def decoding_moving_window(
     r2_scores = []
     if max_time_bin is None:
         max_time_bin = X.shape[1]
-
-    if y.ndim == 2:
-        y_has_time_dim = False
-    elif y.ndim == 3:
-        y_has_time_dim = True
 
     for t in tqdm(
         np.arange(min_time_bin, max_time_bin + 1 - window_length_bin, step=step_bin)
