@@ -73,6 +73,21 @@ class Params:
         10: 90,
     }
 
+    oscillating_key_points = [
+    "left_ankle",
+    "left_elbow",
+    "left_foot",
+    "left_knee",
+    "left_paw",
+    "left_wrist",
+    "right_ankle",
+    "right_elbow",
+    "right_foot",
+    "right_knee",
+    "right_paw",
+    "right_wrist",
+]
+
 
 @dataclass
 class colors:
@@ -106,3 +121,4 @@ class colors:
     ipsi = "cornflowerblue"
     GPe = "k"
     bhv_light = np.array([100, 100, 100]) / 255
+

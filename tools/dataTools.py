@@ -41,23 +41,36 @@ def shift_time_no_wrap(arr, shift, fill_value=np.nan):
 
 def add_concat_trial_start(td: pd.DataFrame):
     td = td.copy()
-    td["concat_trial_start"] = pd.Series([None] * len(td), dtype="object")
+    td["concat_trial_start"] = pd.Series([None] * len(td), dtype="object", index=td.index)
 
-    for idx, row in td.iterrows():
+    for pos, (idx, row) in enumerate(td.iterrows()):
         if row.trial_name != "trial":
             continue
-        td.at[idx, "concat_trial_start"] = td.iloc[idx - 1].trial_length
+        td.at[idx, "concat_trial_start"] = int(td.iloc[pos - 1].trial_length)
     return td
 
 
 def add_concat_perturb_time(td: pd.DataFrame):
     td = td.copy()
-    td["concat_perturb_time"] = pd.Series([None] * len(td), dtype="object")
+    td["concat_perturb_time"] = pd.Series([None] * len(td), dtype="object", index=td.index)
 
-    for idx, row in td.iterrows():
+    rows_to_drop = []
+    for pos, (idx, row) in enumerate(td.iterrows()):
         if row.trial_name != "trial":
             continue
-        td.at[idx, "concat_perturb_time"] = td.iloc[idx - 1].trial_length + row.idx_sol_on
+        sol_on = row.idx_sol_on
+        if (
+            sol_on is None
+            or (isinstance(sol_on, float) and np.isnan(sol_on))
+            or (isinstance(sol_on, np.ndarray) and sol_on.size == 0)
+        ):
+            rows_to_drop.append(idx)
+            continue
+        td.at[idx, "concat_perturb_time"] = int(td.iloc[pos - 1].trial_length + sol_on)
+
+    if rows_to_drop:
+        print(f"add_concat_perturb_time: dropping {len(rows_to_drop)} trial(s) with missing idx_sol_on")
+        td = td.drop(index=rows_to_drop)
     return td
 
 
@@ -67,7 +80,7 @@ def concat_previous_intertrial_signal(td, signal, features: np.ndarray | None = 
 
     td = td.copy()
     new_signal = signal + "_concat"
-    td[new_signal] = pd.Series([None] * len(td), dtype="object")
+    td[new_signal] = pd.Series([None] * len(td), dtype="object", index=td.index)
 
     for pos in range(len(td)):
         row = td.iloc[pos]

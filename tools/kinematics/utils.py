@@ -4,115 +4,10 @@ Docstring for kinematics.utils
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import scipy
 from scipy.signal import savgol_filter
 from scipy.stats import skew
 from sklearn.mixture import GaussianMixture
-
-import tools.dsp as dsp
-
-
-def compute_perturb_distrurb_score(
-    power, perturb_idx, start_idx, stop_idx=-200, dt: float = 0.01
-):
-    # z_score
-    # power = (power - power[start_idx:perturb_idx].mean(0)) / power[start_idx:perturb_idx].std(
-    #     0
-    # )
-
-    power = power - power[start_idx:perturb_idx].mean(0)
-    # power = power - power[(perturb_idx - 100) : perturb_idx].mean(0)
-    post = power[perturb_idx:stop_idx, :]
-
-    disturb_score = np.nansum(post, axis=0) * dt
-
-    return disturb_score
-
-
-def add_power_metric_to_td(td):
-    td = td.copy()
-    td["disturb_score"] = pd.Series(np.nan * len(td), dtype="object")
-
-    for idx, row in td.iterrows():
-        if row.power is None:
-            continue
-
-        td.at[idx, "disturb_score"] = compute_perturb_distrurb_score(
-            row.power,
-            row.concat_perturb_time,
-            start_idx=100,
-        )
-
-    return td
-
-
-def compute_peak_freq_pre_perturb(bhv_arr, perturb_idx: int, nperseg=None, noverlap=None):
-    freqs, psd = scipy.signal.welch(
-        bhv_arr[perturb_idx - 300 : perturb_idx],
-        fs=100,
-        nperseg=nperseg,
-        noverlap=noverlap,
-        axis=0,
-    )
-    return freqs[np.argmax(psd, axis=0)], freqs, psd
-
-
-def compute_power_in_bhv_concat_td(td, freq_tresh=0.5, method="morlet", phase=True):
-    td = td.copy()
-    td["power"] = pd.Series([None] * len(td), dtype="object")
-    td["phases"] = pd.Series([None] * len(td), dtype="object")
-
-    n = 0
-    for idx, row in td.iterrows():
-        if row.trial_name != "trial":
-            continue
-        peak_freqs, freqs, psd = compute_peak_freq_pre_perturb(
-            row.bhv_concat, perturb_idx=row.concat_perturb_time
-        )
-        peak_mean_freq = freqs[np.argmax(psd.mean(-1), axis=0)]
-        if peak_mean_freq < 2:
-            n = n + 1
-            continue
-        # if any(x < freq_tresh for x in peak_freqs):
-        #     # idx = np.argsort(psd[:, 0], axis=0)[-2:]   # indices of top 2 values per column
-        #     # top2_freqs = freqs[sorted(idx)]
-        #     # print(top2_freqs, idx)
-        #     n = n + 1
-        #     # low_peak_idx = np.where(peak_freqs < freq_tresh)[0]
-        #     # print(peak_freqs)
-        #     fig, ax = plt.subplots(2, 1, figsize=(8, 4))
-        #     ax[0].plot(freqs, psd, alpha=0.5, color='gray')
-        #     ax[0].plot(freqs, psd.mean(-1), color='k')
-        #     ax[1].plot(row.bhv_concat)
-        #     ax[1].axvline(row.concat_perturb_time, color='k', linestyle='dashed')
-        #     peak_mean_freq = freqs[np.argmax(psd.mean(-1), axis=0)]
-        #     ax[0].set_title(peak_mean_freq < 2)
-        #     plt.show()
-        #     continue
-
-        powers, phases = [], []
-        for i, peak_freq in enumerate(peak_freqs):
-            peak_freq = peak_mean_freq  # remove this to get the per_keypoint_freq
-            if method == "morlet":
-                power = dsp.compute_morlet_power(
-                    row.bhv_concat[:, i], fs=100, freqs=peak_freq
-                )
-            # compute phases
-            _, instantaneous_phase = dsp.get_power_in_freq_range(
-                row.bhv_concat[:, i], 100, (peak_freq - 1, peak_freq + 1)
-            )
-            phases.append(instantaneous_phase)
-            powers.append(np.log10(np.squeeze(power)))
-
-        phases = np.array(phases)
-        powers = np.array(powers)
-        if phase:
-            td.at[idx, "phases"] = phases.T
-        td.at[idx, "power"] = powers.T
-
-    print(f"Skipped {n} trials")
-    return td
 
 
 def assess_bimodality(x, n_init=5, random_state=0):
@@ -254,6 +149,99 @@ def compute_immobile_thresh(td, p=5, plot=True):
         ax.set_xlabel("Log speed")
         ax.legend()
     return thresh
+
+
+def otsu_threshold(x, bins=256):
+    """
+    Parameter-free threshold via Otsu's method: finds the value t that maximises
+    between-class variance of the two populations below/above t.
+
+    Parameters
+    ----------
+    x    : 1-D array (e.g. log-speed values)
+    bins : histogram resolution
+
+    Returns
+    -------
+    float  threshold in the same units as x
+    """
+    hist, edges = np.histogram(x, bins=bins)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    hist = hist.astype(float) / hist.sum()
+
+    best_t, best_var = centers[0], -1.0
+    cumsum = np.cumsum(hist)
+    cummean = np.cumsum(hist * centers)
+
+    for i in range(1, len(centers)):
+        w0 = cumsum[i - 1]
+        w1 = 1.0 - w0
+        if w0 == 0 or w1 == 0:
+            continue
+        mu0 = cummean[i - 1] / w0
+        mu1 = (cummean[-1] - cummean[i - 1]) / w1
+        between_var = w0 * w1 * (mu0 - mu1) ** 2
+        if between_var > best_var:
+            best_var = between_var
+            best_t = centers[i]
+    return best_t
+
+
+def drop_immobile_trials(td, pre_perturb_window=(100, 200), min_immobile_bins=2, plot=False):
+    """
+    Drop perturbation trials where the animal stopped running for at least
+    `min_immobile_bins` consecutive samples anywhere in `pre_perturb_window`.
+
+    The immobility threshold is computed once per call using Otsu's method on
+    the log-speed pooled across all trials — no bimodality assumption, no
+    tunable percentile.
+
+    Parameters
+    ----------
+    td : pd.DataFrame
+        Trial-only pyalData table (trial_name == 'trial'), already filtered
+        before calling this function.
+    pre_perturb_window : tuple (start_bin, end_bin)
+        Index window (in samples, 10 ms/bin) within each trial's `bhv` array
+        to search for immobility. E.g. (100, 500) = 1–5 s before perturbation.
+    min_immobile_bins : int
+        Minimum consecutive below-threshold bins to count as immobile.
+        2 bins = 20 ms at 10 ms/bin.
+    plot : bool
+        If True, show log-speed histogram with threshold.
+
+    Returns
+    -------
+    pd.DataFrame  filtered trial table (index preserved).
+    """
+    # Pool speed across all trials
+    vel = np.gradient(np.concatenate(td.bhv.values), axis=0)
+    speed = np.linalg.norm(vel, axis=1)
+    log_speed = np.log(np.maximum(speed, 1e-10))
+
+    # Otsu threshold in log-space → convert back
+    thresh_log = otsu_threshold(log_speed)
+    thresh = np.exp(thresh_log)
+    print(f"Otsu immobility threshold: {thresh:.4f}")
+
+    if plot:
+        fig, ax = plt.subplots()
+        ax.hist(log_speed, bins=100)
+        ax.axvline(thresh_log, color="red", linestyle="--", label=f"Otsu thresh (log={thresh_log:.2f})")
+        ax.set_xlabel("Log speed")
+        ax.legend()
+
+    initial_count = len(td)
+    filtered_df = td[
+        td["bhv"].apply(
+            lambda arr: not immobile_starts_before_event(
+                arr, thresh=thresh, event_onset=pre_perturb_window, win=min_immobile_bins
+            )
+        )
+    ]
+    dropped_count = initial_count - len(filtered_df)
+    print(f"Dropped {dropped_count} of {initial_count} rows ({dropped_count/initial_count:.2%}).")
+    return filtered_df
 
 
 def drop_immobile_trials_from_td(td, event_onset=(100, 200), win=50, p=5, plot=False):
