@@ -270,7 +270,7 @@ other = [
     "left_shoulder",
     "right_shoulder",
 ]
-for keypoint in left:
+for keypoint in left + right + other:
     print(keypoint)
     results_global[keypoint] = {}
 
@@ -314,5 +314,5 @@ for keypoint in left:
             }
 
 
-with open("/data/equake_results/lagged_results_all_areas_left_keypoints.pkl", "wb") as f:
+with open("/data/equake_results/lagged_results_all_areas.pkl", "wb") as f:
     pickle.dump(results_global, f)

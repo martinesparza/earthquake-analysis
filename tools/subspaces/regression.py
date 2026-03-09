@@ -76,10 +76,10 @@ class SemedoRRR(BaseEstimator):
 def cross_val_semedo_rrr(
     X,
     y,
-    alpha=100,
+    alpha=0,
     cv=KFold(5, shuffle=False),
     fit_rank=False,
-    ranks=np.arange(2, 40, step=2),
+    ranks=np.arange(2, 30, step=2),
     default_rank=10,
 ):
     mask = ~np.isnan(X).any(axis=1) & ~np.isnan(y).any(axis=1)
@@ -119,12 +119,12 @@ def cross_val_semedo_rrr_td(
     signal_x,
     signal_y,
     target_rank,
-    alpha=100,
+    alpha=0,
     cv=KFold(5, shuffle=False),
     fit_rank=False,
     rank=10,
 ):
-    X = np.concatenate(td[signal_x].values)
+    X = np.concatenate(td[signal_x].values)[:, :]
     y = np.concatenate(td[signal_y].values)[:, :target_rank]
     r2, opt_rank = cross_val_semedo_rrr(
         X, y, alpha, fit_rank=fit_rank, default_rank=rank, cv=cv

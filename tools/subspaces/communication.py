@@ -25,7 +25,7 @@ def compute_embedding_on_trials(td_arr_a, td_arr_b, model, null=False):
 def compute_embedding_on_td(td, signal_x, signal_y, model, window=(200, 450), null=False):
     """Here td_arr_a has shape (n_trials, n_time, n_features"""
     td_arr_a = np.stack(td[signal_x].values)[:, window[0] : window[1], :]
-    td_arr_b = np.stack(td[signal_y].values)[:, window[0] : window[1], :]
+    td_arr_b = np.stack(td[signal_y].values)[:, window[0] : window[1], :30]
     emb = compute_embedding_on_trials(td_arr_a, td_arr_b, model, null)
     return emb, variance_in_subspace_df(td, signal_x, emb)
 

@@ -368,6 +368,75 @@ class ReducedRankRegression_:
         self.coef_ = Vt.T[:, : self.rank] @ Vt[: self.rank, :] @ b_ridge
 
 
+# def rrr(
+#     X: np.ndarray, Y: np.ndarray, rank: int = 2, alpha: float = 0, fullReturn: bool = False
+# ) -> tuple[np.ndarray,]:
+#     """Reduced Rank Regression
+
+#     Based on https://rss.onlinelibrary.wiley.com/doi/10.1111/rssc.12494
+
+
+#     Args:
+
+#         X , Y (np.ndarray): Data matrices, of the same first dimension
+
+#         rank (int): Number of bottleneck dimensions
+
+#         alpha (float): controls the trade-off between the lasso (alpha = 1) and the ridge (alpha = 0). Leave at 0
+
+#         fullReturn (bool): If True, returns the full projection matrices, otherwise only the R2
+
+
+#     Returns:
+
+#         r2 (float): R2 value, explained variance through the bottleneck dimensions
+
+#         w, v (np.ndarray): Projection matrices for X and Y to the bottleneck space
+
+#         Zx, Zy (np.ndarray): Projected data in the bottleneck space
+
+
+#     Signature:
+
+#         r2 = rrr(X, Y, rank=2)
+
+#         w, v, r2, Zx, Zy = rrr(X, Y, rank=2, alpha=0, fullReturn=True)
+
+#     """
+
+#     assert X.shape[0] == Y.shape[0]
+
+#     "Number of samples must match between X and Y"
+
+#     U, s, V = np.linalg.svd(X, full_matrices=False)
+
+#     B = V.T @ np.diag(s / (s**2 + alpha * X.shape[0])) @ U.T @ Y
+
+#     U, s, V = np.linalg.svd(X @ B, full_matrices=False)
+
+#     w = B @ V.T[:, :rank]
+
+#     v = V.T[:, :rank]
+
+#     pos = np.argmax(np.abs(v), axis=0)
+
+#     flips = np.sign(v[pos, range(v.shape[1])])
+
+#     v = v * flips
+#     w = w * flips
+#     r2 = 1 - np.sum((Y - X @ w @ v.T) ** 2) / np.sum(Y**2)
+
+#     if not fullReturn:
+#         return r2
+
+#     # Project
+
+#     Zx = X @ w
+#     Zy = Y @ v
+
+#     return w, v, r2, Zx, Zy
+
+
 class ReducedRankRegressorBence(BaseEstimator):
     """
     Reduced Rank Regressor (linear 'bottlenecking' or 'multitask learning')

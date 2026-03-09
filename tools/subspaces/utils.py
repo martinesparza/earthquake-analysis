@@ -7,7 +7,7 @@ import numpy as np
 from scipy import sparse
 import scipy
 from scipy.linalg import null_space, orth
-from sklearn.metrics import r2_score, make_scorer
+from sklearn.metrics import r2_score, make_scorer, explained_variance_score
 from sklearn.model_selection import cross_val_score
 
 import tools.subspaces as subspaces
