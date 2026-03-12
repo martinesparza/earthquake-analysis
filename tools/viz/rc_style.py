@@ -45,6 +45,7 @@ def _register_arial() -> None:
 
 _register_arial()
 
+
 # ---------------------------------------------------------------------------
 # Master parameter dict
 # ---------------------------------------------------------------------------
@@ -137,6 +138,7 @@ RC_PARAMS_TALK: dict[str, object] = {
 }
 
 
+
 def apply_rc() -> None:
     """Mutate ``matplotlib.rcParams`` with the project defaults."""
     mpl.rcParams.update(RC_PARAMS)
@@ -145,6 +147,7 @@ def apply_rc() -> None:
 def apply_rc_talk() -> None:
     """Mutate ``matplotlib.rcParams`` with talk-optimised defaults (bigger fonts/lines)."""
     mpl.rcParams.update(RC_PARAMS_TALK)
+
 
 
 @contextmanager
