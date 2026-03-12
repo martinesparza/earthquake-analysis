@@ -69,7 +69,9 @@ def add_concat_perturb_time(td: pd.DataFrame):
         td.at[idx, "concat_perturb_time"] = int(td.iloc[pos - 1].trial_length + sol_on)
 
     if rows_to_drop:
-        print(f"add_concat_perturb_time: dropping {len(rows_to_drop)} trial(s) with missing idx_sol_on")
+        print(
+            f"add_concat_perturb_time: dropping {len(rows_to_drop)} trial(s) with missing idx_sol_on"
+        )
         td = td.drop(index=rows_to_drop)
     return td
 

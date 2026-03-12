@@ -35,7 +35,7 @@ ALL_BHV_FIELDS = [
     "tail_base",
     "tail_middle",
     "tail_tip",
-    "hip_center"
+    "hip_center",
 ]
 
 REL_START = -200
@@ -67,6 +67,7 @@ def get_limb(forelimb: bool, laterality: str):
     ]
     return bhv_fields
 
+
 def opt_ridge_alpha(x_cv, y_cv):
     alphas = np.logspace(-4, 4, 50)
     ridge_cv = RidgeCV(alphas=alphas)
@@ -79,21 +80,6 @@ def opt_ridge_alpha(x_cv, y_cv):
 def main():
 
     # Load data
-    handler = decode.DecodingDataHandler(
-        # data_dir="/data/bnd-data/raw/",
-        data_dir="/data/raw/",
-        session="M061_2025_03_06_14_00",
-        combine_time_bins=False,
-    )
-    df = handler.df.copy()
-
-    # Select trials, run pca, and drop trials without motion
-    df = pyal.select_trials(df, df.trial_name == "trial")
-    df = dt.add_pca_df(df)
-    df = dt.remove_trials_wo_motion_before_event(df, "idx_motion", "idx_sol_on")
-    perturb_td = pyal.restrict_to_interval(
-        df, "idx_sol_on", rel_start=REL_START, rel_end=REL_END
-    )
 
     # Empty results dictionary
     scores = {}
@@ -106,7 +92,7 @@ def main():
         for area in AREAS:
             alpha = opt_ridge_alpha(
                 np.concatenate(perturb_td[f"{bhv_field}"].values),
-                np.concatenate(perturb_td[f"{area}_rates_pca"].values)
+                np.concatenate(perturb_td[f"{area}_rates_pca"].values),
             )
             print(f"\t{bhv_field} -> {area} best alpha: {alpha}")
             scores[bhv_field][area], times = decode.regression_moving_window(
@@ -115,7 +101,7 @@ def main():
                 window_length_bin=20,
                 step_bin=1,
                 cv=5,
-                alpha=alpha
+                alpha=alpha,
             )
 
     bhv_combinations = {}
@@ -134,7 +120,9 @@ def main():
     bhv_combinations["all"] = ["all"]
 
     for bhv_combination_key, bhv_combination_value in bhv_combinations.items():
-        print(f"Processing keypoint combination: {bhv_combination_key}: {bhv_combination_value}")
+        print(
+            f"Processing keypoint combination: {bhv_combination_key}: {bhv_combination_value}"
+        )
 
         df_ = dt.add_bhv(df, bhv_fields=bhv_combination_value)
         perturb_td = pyal.restrict_to_interval(
@@ -146,7 +134,7 @@ def main():
         for area in AREAS:
             alpha = opt_ridge_alpha(
                 np.concatenate(perturb_td.bhv.values),
-                np.concatenate(perturb_td[f"{area}_rates_pca"].values)
+                np.concatenate(perturb_td[f"{area}_rates_pca"].values),
             )
             print(f"\t{bhv_combination_key} -> {area} best alpha: {alpha}")
             scores[bhv_combination_key][area], times = decode.regression_moving_window(
@@ -156,8 +144,8 @@ def main():
                 step_bin=1,
                 cv=5,
             )
-    scores['times'] = times - (abs(REL_START) * 0.01)
-    
+    scores["times"] = times - (abs(REL_START) * 0.01)
+
     with open("scores_encoding_v2.pkl", "wb") as f:
         pickle.dump(scores, f)
 

@@ -7,13 +7,15 @@ import numpy as np
 import pyaldata as pyal
 import sys
 
+import scipy
 from sklearn.linear_model import RidgeCV
 
 sys.path.append("../../")
 
 import tools.dataTools as dt
 import tools.decoding as decode
-
+import tools.dsp as dsp
+import tools.subspaces as subspaces
 
 AREAS = ["MOp", "SSp", "CP", "VAL"]
 ALL_BHV_FIELDS = [
@@ -35,11 +37,17 @@ ALL_BHV_FIELDS = [
     "tail_base",
     "tail_middle",
     "tail_tip",
-    "hip_center"
+    "hip_center",
 ]
 
+
+# ==== Analysis Parameters ====
+WINDOW_LENGTH_BIN = 20  # window size in bins
+STEP_BIN = 1  # step size in bins
+CV = 5  # number of cross-validation folds
+
 REL_START = -200
-REL_END = 200
+REL_END = 300
 
 FORE_KEYWORDS = [
     "wrist",
@@ -67,8 +75,9 @@ def get_limb(forelimb: bool, laterality: str):
     ]
     return bhv_fields
 
+
 def opt_ridge_alpha(x_cv, y_cv):
-    alphas = np.logspace(-3, 5, 50)
+    alphas = np.logspace(-4, 5, 50)
     ridge_cv = RidgeCV(alphas=alphas)
     ridge_cv.fit(x_cv, y_cv)
 
@@ -79,21 +88,21 @@ def opt_ridge_alpha(x_cv, y_cv):
 def main():
 
     # Load data
-    handler = decode.DecodingDataHandler(
-        # data_dir="/data/bnd-data/raw/",
-        data_dir="/data/raw/",
-        session="M061_2025_03_06_14_00",
-        combine_time_bins=False,
-    )
-    df = handler.df.copy()
+    data_dir = "/data/bnd-data/raw/"
+    session = "M061_2025_03_06_14_00"
+    df_tr, dstrb_idx = dsp.load_and_process_session(session, data_dir)
+    disturb_mean_vals_s = df_tr["disturb_mean"].values
+    threshold_s = -scipy.stats.sem(disturb_mean_vals_s)
+    disturb_mean_sorted_s = disturb_mean_vals_s[dstrb_idx]
+    idx_to_keep_s = int(np.searchsorted(disturb_mean_sorted_s, threshold_s))
+    print(f"  threshold = {threshold_s:.3f}  |  trials selected: {idx_to_keep_s}")
 
-    # Select trials, run pca, and drop trials without motion
-    df = pyal.select_trials(df, df.trial_name == "trial")
-    df = dt.add_pca_df(df)
-    df = dt.remove_trials_wo_motion_before_event(df, "idx_motion", "idx_sol_on")
-    perturb_td = pyal.restrict_to_interval(
-        df, "idx_sol_on", rel_start=REL_START, rel_end=REL_END
+    df_design_s = df_tr.iloc[sorted(dstrb_idx[:idx_to_keep_s])]
+    perturb_td_s = pyal.restrict_to_interval(
+        df_design_s, start_point_name="idx_sol_on", rel_start=REL_START, rel_end=REL_END
     )
+    perturb_td_s = dt.add_bhv(perturb_td_s)
+    perturb_td_shuff = perturb_td_s.sample(frac=1, random_state=42).reset_index(drop=False)
 
     # Empty results dictionary
     scores = {}
@@ -101,21 +110,22 @@ def main():
     # # Run all keypoints
     for bhv_field in ALL_BHV_FIELDS:
         print(f"Processing keypoint: {bhv_field}")
-        bhv = np.stack(perturb_td[f"{bhv_field}"].values)
+        bhv = np.stack(perturb_td_shuff[f"{bhv_field}"].values)
         scores[bhv_field] = {}
         for area in AREAS:
             alpha = opt_ridge_alpha(
-                np.concatenate(perturb_td[f"{area}_rates_pca"].values),
-                np.concatenate(perturb_td[f"{bhv_field}"].values)
+                np.concatenate(perturb_td_shuff[f"{area}_rates_pca"].values),
+                np.concatenate(perturb_td_shuff[f"{bhv_field}"].values),
             )
             print(f"\t{area} -> {bhv_field} best alpha: {alpha}")
             scores[bhv_field][area], times = decode.regression_moving_window(
-                np.stack(perturb_td[f"{area}_rates_pca"].values),
+                np.stack(perturb_td_shuff[f"{area}_rates_pca"].values),
                 bhv,
-                window_length_bin=20,
-                step_bin=1,
-                cv=5,
-                alpha=alpha
+                window_length_bin=WINDOW_LENGTH_BIN,
+                step_bin=STEP_BIN,
+                cv=CV,
+                alpha=alpha,
+                scorer=subspaces.default_scorer,
             )
 
     bhv_combinations = {}
@@ -134,31 +144,31 @@ def main():
     bhv_combinations["all"] = ["all"]
 
     for bhv_combination_key, bhv_combination_value in bhv_combinations.items():
-        print(f"Processing keypoint combination: {bhv_combination_key}: {bhv_combination_value}")
-
-        df_ = dt.add_bhv(df, bhv_fields=bhv_combination_value)
-        perturb_td = pyal.restrict_to_interval(
-            df_, "idx_sol_on", rel_start=REL_START, rel_end=REL_END
+        print(
+            f"Processing keypoint combination: {bhv_combination_key}: {bhv_combination_value}"
         )
 
-        bhv = np.stack(perturb_td.bhv.values)
+        perturb_td_shuff = dt.add_bhv(perturb_td_shuff, bhv_fields=bhv_combination_value)
+
+        bhv = np.stack(perturb_td_shuff.bhv.values)
         scores[bhv_combination_key] = {}
         for area in AREAS:
             alpha = opt_ridge_alpha(
-                np.concatenate(perturb_td[f"{area}_rates_pca"].values),
-                np.concatenate(perturb_td.bhv.values)
+                np.concatenate(perturb_td_shuff[f"{area}_rates_pca"].values),
+                np.concatenate(perturb_td_shuff.bhv.values),
             )
             print(f"\t{bhv_combination_key} -> {area} best alpha: {alpha}")
             scores[bhv_combination_key][area], times = decode.regression_moving_window(
-                np.stack(perturb_td[f"{area}_rates_pca"].values),
+                np.stack(perturb_td_shuff[f"{area}_rates_pca"].values),
                 bhv,
-                window_length_bin=20,
-                step_bin=1,
-                cv=5,
+                window_length_bin=WINDOW_LENGTH_BIN,
+                step_bin=STEP_BIN,
+                cv=CV,
+                scorer=subspaces.default_scorer,
             )
 
-    scores['times'] = times - (abs(REL_START) * 0.01)
-    
+    scores["times"] = times - (abs(REL_START) * 0.01)
+
     with open("scores_decoding_v2.pkl", "wb") as f:
         pickle.dump(scores, f)
 

@@ -3,6 +3,8 @@ import pandas as pd
 import pyaldata as pyal
 
 from tools.params import Params
+import tools.dataTools as dt
+import tools.kinematics as kin
 
 
 # Define the function
@@ -120,3 +122,48 @@ def preprocess(
     ]
 
     return df
+
+
+def load_and_process_session(session, data_dir='/data/raw/', bhv_fields=None, min_immobile_bins=5):
+    """
+    Full pipeline for a session:
+      1. Load raw pyalData
+      2. Preprocess (remove low-firing neurons, keep 10 ms bins)
+      3. Fit PCA on all rows except the first (free locomotion period)
+      4. Compute perturbation metric (bhv_concat, Morlet power, disturb_score)
+      5. Filter to perturbation trials, drop immobile, drop NaN scores
+      6. Add disturb_mean / disturb_sum and sort by disturbance
+
+    Returns
+    -------
+    df_tr      : pd.DataFrame  filtered, annotated trial table
+    dstrb_idx  : np.ndarray    indices that sort df_tr ascending by disturbance
+    """
+    if bhv_fields is None:
+        bhv_fields = Params.oscillating_key_points
+
+    # 1 & 2 — load + preprocess
+    df = pyal.load_pyaldata(data_dir + session[:4] + "/" + session)
+    df = preprocess(df, only_trials=False, combine_time_bins=False)
+
+    # 3 — PCA excluding the first row (free locomotion period)
+    df = dt.add_pca_df(df.iloc[1:])
+
+    # 4 — perturbation metric
+    df = kin.compute_perturbation_metric(df, bhv_fields=bhv_fields)
+
+    # 5 — filter trials
+    df_tr = pyal.select_trials(df, df.trial_name == 'trial')
+    df_tr = kin.drop_immobile_trials(df_tr, min_immobile_bins=min_immobile_bins)
+    mask = df_tr["disturb_score"].apply(
+        lambda x: isinstance(x, np.ndarray) and not np.any(np.isnan(x))
+    )
+    df_tr = df_tr.loc[mask]
+
+    # 6 — derived metrics + sort order
+    df_tr['disturb_mean'] = df_tr['disturb_score'].apply(np.mean)
+    df_tr['disturb_sum'] = df_tr['disturb_score'].apply(lambda a: np.log10(np.abs(np.sum(a))))
+    disturbances = np.sum(np.stack(df_tr.disturb_score.values), axis=1)
+    dstrb_idx = np.argsort(disturbances)
+
+    return df_tr, dstrb_idx
