@@ -1,6 +1,10 @@
+import traceback
+
 import numpy as np
 import pandas as pd
+import scipy.stats
 import pyaldata as pyal
+from tqdm import tqdm
 
 from tools.params import Params
 import tools.dataTools as dt
@@ -124,7 +128,9 @@ def preprocess(
     return df
 
 
-def load_and_process_session(session, data_dir='/data/raw/', bhv_fields=None, min_immobile_bins=5):
+def load_and_process_session(
+    session, data_dir="/data/raw/", bhv_fields=None, min_immobile_bins=5
+):
     """
     Full pipeline for a session:
       1. Load raw pyalData
@@ -149,21 +155,147 @@ def load_and_process_session(session, data_dir='/data/raw/', bhv_fields=None, mi
     # 3 — PCA excluding the first row (free locomotion period)
     df = dt.add_pca_df(df.iloc[1:])
 
-    # 4 — perturbation metric
-    df = kin.compute_perturbation_metric(df, bhv_fields=bhv_fields)
+    # 4 — perturbation metric (requires behavioural data; skip gracefully if absent)
+    has_perturbation_metric = True
+    try:
+        df = kin.compute_perturbation_metric(df, bhv_fields=bhv_fields)
+    except Exception as e:
+        print(
+            f"  WARNING: compute_perturbation_metric failed ({e}). "
+            f"Skipping disturbance metric and trial dropping."
+        )
+        has_perturbation_metric = False
 
     # 5 — filter trials
-    df_tr = pyal.select_trials(df, df.trial_name == 'trial')
-    df_tr = kin.drop_immobile_trials(df_tr, min_immobile_bins=min_immobile_bins)
-    mask = df_tr["disturb_score"].apply(
-        lambda x: isinstance(x, np.ndarray) and not np.any(np.isnan(x))
-    )
-    df_tr = df_tr.loc[mask]
+    df_tr = pyal.select_trials(df, df.trial_name == "trial")
 
-    # 6 — derived metrics + sort order
-    df_tr['disturb_mean'] = df_tr['disturb_score'].apply(np.mean)
-    df_tr['disturb_sum'] = df_tr['disturb_score'].apply(lambda a: np.log10(np.abs(np.sum(a))))
-    disturbances = np.sum(np.stack(df_tr.disturb_score.values), axis=1)
-    dstrb_idx = np.argsort(disturbances)
+    if has_perturbation_metric:
+        df_tr = kin.drop_immobile_trials(df_tr, min_immobile_bins=min_immobile_bins)
+        mask = df_tr["disturb_score"].apply(
+            lambda x: isinstance(x, np.ndarray) and not np.any(np.isnan(x))
+        )
+        df_tr = df_tr.loc[mask]
+
+        # 6 — derived metrics + sort order
+        df_tr["disturb_mean"] = df_tr["disturb_score"].apply(np.mean)
+        df_tr["disturb_sum"] = df_tr["disturb_score"].apply(
+            lambda a: np.log10(np.abs(np.sum(a)))
+        )
+        disturbances = np.sum(np.stack(df_tr.disturb_score.values), axis=1)
+        dstrb_idx = np.argsort(disturbances)
+    else:
+        dstrb_idx = np.arange(len(df_tr))
 
     return df_tr, dstrb_idx
+
+
+def drop_unperturbed_trials(
+    df_tr: pd.DataFrame, dstrb_idx: np.ndarray, thresh_val: float = -2.0
+) -> pd.DataFrame:
+    """
+    Keep only trials with a strong mechanical perturbation.
+
+    A trial is kept if it satisfies BOTH:
+      - its disturbance rank falls below the SEM-based threshold, AND
+      - its disturb_mean exceeds thresh_val
+
+    Parameters
+    ----------
+    df_tr      : trial DataFrame with a 'disturb_mean' column
+    dstrb_idx  : argsort indices (ascending disturbance) from load_and_process_session
+    thresh_val : hard lower bound on disturb_mean (default -2.0)
+
+    Returns
+    -------
+    Filtered DataFrame.
+    """
+    disturb_vals = df_tr["disturb_mean"].values
+    threshold = -scipy.stats.sem(disturb_vals)
+
+    sorted_vals = disturb_vals[dstrb_idx]
+    n_below_threshold = int(np.searchsorted(sorted_vals, threshold))
+
+    by_rank = np.zeros(len(df_tr), dtype=bool)
+    by_rank[dstrb_idx[:n_below_threshold]] = True
+    by_value = disturb_vals > thresh_val
+
+    mask = by_rank & by_value
+    print(
+        f"  threshold = {threshold:.3f}  |  "
+        f"trials by rank: {n_below_threshold}  |  "
+        f"trials kept: {mask.sum()}"
+    )
+    return df_tr.iloc[np.where(mask)[0]]
+
+
+def load_sessions_for_trial_analyses(
+    sessions: list[str],
+    data_dir: str = "/data/bnd-data/raw/",
+    rel_start: int = -200,
+    rel_end: int = 300,
+    thresh_val: float = -2.0,
+    area_exclusions: dict[str, list[str]] | None = None,
+) -> dict[str, dict | None]:
+    """
+    Load, preprocess and slice a list of sessions into a ready-to-analyse dict.
+
+    For each session:
+      1. load_and_process_session  →  df_tr, dstrb_idx
+      2. drop_unperturbed_trials   →  df_design
+      3. pyal.restrict_to_interval →  perturb_td  (window: rel_start..rel_end bins)
+
+    Parameters
+    ----------
+    sessions        : list of session strings, e.g. ['M061_2025_03_04_10_00', ...]
+    data_dir        : path to raw data directory
+    rel_start       : start bin relative to idx_sol_on (default -200 = -2 s at 10 ms)
+    rel_end         : end bin relative to idx_sol_on   (default  300 = +3 s at 10 ms)
+    thresh_val      : passed to drop_unperturbed_trials
+    area_exclusions : optional dict mapping session → list of area names to drop,
+                      e.g. {'M062_2025_03_20_14_00': ['VAL']}
+
+    Returns
+    -------
+    dict  {session: {'td': perturb_td} | None}
+          None indicates the session failed to load.
+    """
+    if area_exclusions is None:
+        area_exclusions = {}
+
+    results = {}
+
+    for sess in tqdm(sessions, desc="Loading sessions"):
+        print(f"\n{'='*60}\n{sess}\n{'='*60}")
+        try:
+            df_tr, dstrb_idx = load_and_process_session(sess, data_dir=data_dir)
+            if "disturb_mean" in df_tr.columns:
+                df_design = drop_unperturbed_trials(df_tr, dstrb_idx, thresh_val=thresh_val)
+            else:
+                print("  No disturb_mean — skipping trial dropping.")
+                df_design = df_tr
+
+            perturb_td = pyal.restrict_to_interval(
+                df_design,
+                start_point_name="idx_sol_on",
+                rel_start=rel_start,
+                rel_end=rel_end,
+            )
+
+            excluded = area_exclusions.get(sess, [])
+            if excluded:
+                drop_cols = [
+                    c for c in perturb_td.columns if any(c.startswith(a) for a in excluded)
+                ]
+                perturb_td = perturb_td.drop(columns=drop_cols)
+                print(f"  Excluded areas: {excluded}")
+
+            results[sess] = {"td": perturb_td}
+
+        except Exception as e:
+            print(f"  ERROR: {e}")
+            traceback.print_exc()
+            results[sess] = None
+
+    n_ok = sum(v is not None for v in results.values())
+    print(f"\nLoaded {n_ok}/{len(sessions)} sessions successfully.")
+    return results
