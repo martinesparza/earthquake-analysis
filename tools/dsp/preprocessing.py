@@ -234,7 +234,6 @@ def load_sessions_for_trial_analyses(
     rel_start: int = -200,
     rel_end: int = 300,
     thresh_val: float = -2.0,
-    area_exclusions: dict[str, list[str]] | None = None,
 ) -> dict[str, dict | None]:
     """
     Load, preprocess and slice a list of sessions into a ready-to-analyse dict.
@@ -251,16 +250,13 @@ def load_sessions_for_trial_analyses(
     rel_start       : start bin relative to idx_sol_on (default -200 = -2 s at 10 ms)
     rel_end         : end bin relative to idx_sol_on   (default  300 = +3 s at 10 ms)
     thresh_val      : passed to drop_unperturbed_trials
-    area_exclusions : optional dict mapping session → list of area names to drop,
-                      e.g. {'M062_2025_03_20_14_00': ['VAL']}
+
 
     Returns
     -------
     dict  {session: {'td': perturb_td} | None}
           None indicates the session failed to load.
     """
-    if area_exclusions is None:
-        area_exclusions = {}
 
     results = {}
 
@@ -280,14 +276,6 @@ def load_sessions_for_trial_analyses(
                 rel_start=rel_start,
                 rel_end=rel_end,
             )
-
-            excluded = area_exclusions.get(sess, [])
-            if excluded:
-                drop_cols = [
-                    c for c in perturb_td.columns if any(c.startswith(a) for a in excluded)
-                ]
-                perturb_td = perturb_td.drop(columns=drop_cols)
-                print(f"  Excluded areas: {excluded}")
 
             results[sess] = {"td": perturb_td}
 

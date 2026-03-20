@@ -26,8 +26,24 @@ notebooks get this for free.
 
 from __future__ import annotations
 
+import glob as _glob
 import matplotlib as mpl
+import matplotlib.font_manager as _fm
 from contextlib import contextmanager
+
+
+def _register_arial() -> None:
+    """Register Arial TTFs from the msttcorefonts directory if not yet known."""
+    arial_files = _glob.glob(
+        "/usr/share/fonts/truetype/msttcorefonts/Arial*.ttf"
+    ) + _glob.glob("/usr/share/fonts/truetype/msttcorefonts/arial*.ttf")
+    known = {f.fname for f in _fm.fontManager.ttflist}
+    for path in arial_files:
+        if path not in known:
+            _fm.fontManager.addfont(path)
+
+
+_register_arial()
 
 # ---------------------------------------------------------------------------
 # Master parameter dict
@@ -93,13 +109,53 @@ RC_PARAMS: dict[str, object] = {
 }
 
 
+RC_PARAMS_TALK: dict[str, object] = {
+    **RC_PARAMS,
+    # --- Font ---
+    "font.size": 16,
+    "axes.titlesize": 14,
+    "axes.labelsize": 12,
+    "xtick.labelsize": 11,
+    "ytick.labelsize": 11,
+    "legend.fontsize": 12,
+    "legend.title_fontsize": 16,
+    # --- Lines & markers ---
+    "lines.linewidth": 1.5,
+    "lines.markersize": 7,
+    "patch.linewidth": 1.5,
+    # --- Axes ---
+    "axes.linewidth": 1.5,
+    # --- Ticks ---
+    "xtick.major.width": 1.5,
+    "ytick.major.width": 1.5,
+    "xtick.minor.width": 1.0,
+    "ytick.minor.width": 1.0,
+    "xtick.major.size": 6,
+    "ytick.major.size": 6,
+    # --- Figure ---
+    "figure.dpi": 150,
+}
+
+
 def apply_rc() -> None:
     """Mutate ``matplotlib.rcParams`` with the project defaults."""
     mpl.rcParams.update(RC_PARAMS)
+
+
+def apply_rc_talk() -> None:
+    """Mutate ``matplotlib.rcParams`` with talk-optimised defaults (bigger fonts/lines)."""
+    mpl.rcParams.update(RC_PARAMS_TALK)
 
 
 @contextmanager
 def rc_context():
     """Context manager: apply project rcParams, restore originals on exit."""
     with mpl.rc_context(RC_PARAMS):
+        yield
+
+
+@contextmanager
+def rc_context_talk():
+    """Context manager: apply talk-optimised rcParams, restore originals on exit."""
+    with mpl.rc_context(RC_PARAMS_TALK):
         yield

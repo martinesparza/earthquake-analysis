@@ -3,6 +3,9 @@
 ## Jupyter notebooks
 Dont run the notebooks until told explicitely
 
+## Printing results in notebook cells
+Always add print statements to notebook cells that produce figures or compute statistics. Claude cannot view images or plots directly — the only way to interpret results is through text output. Every cell with a plot or numerical finding should print the key numbers (e.g. medians, counts, p-values, percentiles) so Claude can read and interpret them from cell outputs.
+
 
 ## 1. The Task
 
@@ -47,8 +50,6 @@ df = pyal.load_pyaldata(path)
 | `disturb_score` | `(12,)` array: oscillation response per keypoint (added by `kin.compute_perturbation_metric()`) |
 | `disturb_mean` | Scalar mean of `disturb_score` across keypoints |
 
-### Time-varying fields
-All `T × N` arrays share the same `T` (number of time bins). Use `pyal.get_time_varying_fields(df)` to enumerate them. Kinematics stay at 10 ms bins; neural signals can be combined to 30 ms bins via `pyal.combine_time_bins(df, 3)`.
 
 ### Useful pyaldata functions
 ```python
@@ -62,7 +63,7 @@ pyal.add_firing_rates(df, 'smooth', std=0.05)       # Gaussian-smoothed rates
 ```
 
 ### Standard analysis bin
-`Params.BIN_SIZE = 0.03` s (30 ms) — 3× the raw 10 ms bin. Always call `pyal.combine_time_bins(df, 3)` before neural analyses. **Do not combine kinematics** — keep `bhv` at 10 ms / 100 Hz.
+Even though some code says to use 30 ms bins, we will use 10ms for most analysis unless specificied otherwise
 
 ---
 
@@ -129,6 +130,43 @@ threshold = -scipy.stats.sem(df_tr['disturb_mean'])   # negative = strong pertur
 df_tr_restricted = df_tr[df_tr['disturb_mean'] < threshold]
 ```
 
+### Batch loading for trial-by-trial analyses
+
+For multi-session analyses, use `dsp.load_sessions_for_trial_analyses()`. It wraps `load_and_process_session` + `drop_unperturbed_trials` + `pyal.restrict_to_interval` for every session in a list, returning a dict keyed by session name.
+
+```python
+sessions = [
+    'M061_2025_03_05_14_00',
+    'M061_2025_03_06_14_00',
+    'M063_2025_03_13_14_00',
+    'M078_2025_08_06_15_00',
+    'M103_2026_02_18_15_30',
+    'M106_2026_02_25_15_00',
+]
+
+# Returns {session: {'td': perturb_td} | None}
+# None means the session failed to load
+all_session_processed = dsp.load_sessions_for_trial_analyses(sessions)
+```
+
+Key parameters of `load_sessions_for_trial_analyses`:
+- `data_dir` — path to raw data (default `/data/bnd-data/raw/`)
+- `rel_start` / `rel_end` — time window in 10 ms bins relative to `idx_sol_on` (defaults: -200 / +300 = −2 s to +3 s)
+- `thresh_val` — hard lower bound on `disturb_mean` passed to `drop_unperturbed_trials` (default -2.0)
+
+The resulting `perturb_td` stored in each `{'td': perturb_td}` is already:
+- restricted to well-perturbed trials
+- sliced to the perturbation window (at 10 ms bins — call `pyal.combine_time_bins(td, 3)` before neural analyses)
+
+Iterating across sessions:
+```python
+for sess, val in all_session_processed.items():
+    if val is None:
+        continue
+    td = val['td']
+    # ... per-session analysis ...
+```
+
 ### Key parameters (`tools/params.py`)
 | Name | Value | Meaning |
 |---|---|---|
@@ -153,3 +191,10 @@ Every new notebook under `notebooks/` must start with:
 import sys
 sys.path.append('../../')
 ```
+
+## Running scripts
+Always run Python scripts with:
+```bash
+poetry run python <script_path>
+```
+Never use `python` or `conda run` directly.
