@@ -1,7 +1,8 @@
 import numpy as np
 import scipy
 
-from .utils import variance_in_subspace_df
+from .utils import variance_in_subspace_df, proj
+from .regression import cross_val_semedo_rrr_td
 
 
 def compute_embedding_on_arrs(arr_a, arr_b, model, null=False):
@@ -22,15 +23,24 @@ def compute_embedding_on_trials(td_arr_a, td_arr_b, model, null=False):
     return compute_embedding_on_arrs(arr_a, arr_b, model, null)
 
 
-def compute_embedding_on_td(td, signal_x, signal_y, model, window=(200, 450), null=False):
+def compute_embedding_on_td(
+    td,
+    signal_x,
+    signal_y,
+    model,
+    origin_rank=30,
+    target_rank=30,
+    window=(200, 450),
+    null=False,
+):
     """Here td_arr_a has shape (n_trials, n_time, n_features"""
-    td_arr_a = np.stack(td[signal_x].values)[:, window[0] : window[1], :]
-    td_arr_b = np.stack(td[signal_y].values)[:, window[0] : window[1], :30]
+    td_arr_a = np.stack(td[signal_x].values)[:, window[0] : window[1], :origin_rank]
+    td_arr_b = np.stack(td[signal_y].values)[:, window[0] : window[1], :target_rank]
     emb = compute_embedding_on_trials(td_arr_a, td_arr_b, model, null)
     return emb, variance_in_subspace_df(td, signal_x, emb)
 
 
-def project_signal(trial_data_, W, signal, out_fieldname):
+def project_signal(td, W, signal, out_fieldname):
     """
     Project a signal using a weight matrix
 
@@ -50,7 +60,7 @@ def project_signal(trial_data_, W, signal, out_fieldname):
     -------
     trial_data with the projections added
     """
-    trial_data = trial_data_.copy()
+    trial_data = td.copy()
     trial_data[out_fieldname] = [s @ W for s in trial_data[signal].values]
     return trial_data
 
@@ -118,3 +128,84 @@ class ReducedRankCommSubspace:
     @property
     def coef_(self):
         return self.projector_mx.T
+
+
+def compute_potent_null_td(
+    td_,
+    signal_x,
+    signal_y,
+    origin_rank,
+    target_rank,
+    n_iter=2,
+    window=(200, 450),
+    fit_rank=True,
+    rank=10,
+):
+    td = td_.copy()
+    del td_
+
+    # Compute initial reduced rank regression to optimise rank
+    r2, opt_rank = cross_val_semedo_rrr_td(
+        td=td,
+        signal_x=signal_x,
+        signal_y=signal_y,
+        target_rank=target_rank,
+        rank=rank,
+        fit_rank=fit_rank,
+    )
+    comm_model = ReducedRankCommSubspace(rank=opt_rank)
+
+    # Compute embeddings
+    emb_null, var_null_init = compute_embedding_on_td(
+        td=td,
+        signal_x=signal_x,
+        signal_y=signal_y,
+        model=comm_model,
+        null=True,
+        origin_rank=origin_rank,
+        target_rank=target_rank,
+        window=window,
+    )
+    emb_potent, var_potent = compute_embedding_on_td(
+        td=td,
+        signal_x=signal_x,
+        signal_y=signal_y,
+        model=comm_model,
+        null=False,
+        origin_rank=origin_rank,
+        target_rank=target_rank,
+        window=window,
+    )
+
+    # Project potent and null signals
+    td = project_signal(
+        td=td, w=emb_null, signal=signal_x, out_fieldname=f"{signal_x}_null_{signal_y}"
+    )  # potent
+    td = project_signal(
+        td=td, w=emb_potent, signal=signal_x, out_fieldname=f"{signal_x}_potent_{signal_y}"
+    )  # null
+
+    ############# Loop to remove activity ####################
+    print(f"Using {n_iter} iterations....")
+    signal_x = f"{signal_x}_null_{signal_y}"
+    for i in range(n_iter):
+        r2, opt_rank = cross_val_semedo_rrr_td(
+            td=td,
+            signal_x=signal_x,
+            signal_y=signal_y,
+            target_rank=target_rank,
+            rank=opt_rank,
+            fit_rank=False,
+        )
+        print(r2.mean(), opt_rank)
+        if (r2.mean() - r2.std()) > 0:
+            pass
+        else:
+            print(f"Iteration number: {i+1}. R2 below 0, breaking")
+            break
+        emb_null, var_null = compute_embedding_on_td(
+            perturb_td_shuff, signal_x, signal_y, comm_model, null=True
+        )
+        td = project_signal(perturb_td_shuff, emb_null, signal_x, signal_x)  # potent
+
+    return td

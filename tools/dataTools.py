@@ -310,8 +310,8 @@ def get_data_array(
 
 
 def add_pca_field(trial_data, signal, n_components):
-    # pca_model = compute_pca(np.concatenate(trial_data[signal].iloc[1:].values), n_components)
-    pca_model = compute_pca(np.concatenate(trial_data[signal].values), n_components)
+    pca_model = compute_pca(np.concatenate(trial_data[signal].iloc[1:].values), n_components)
+    # pca_model = compute_pca(np.concatenate(trial_data[signal].values), n_components)
     trial_data = pyal.apply_dim_reduce_model(trial_data, pca_model, signal, f"{signal}_pca")
 
     return trial_data

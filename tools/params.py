@@ -21,7 +21,7 @@ class Params:
         rel_end=int(WINDOW_perturb[1] / BIN_SIZE),
     )
 
-    WINDOW_perturb_long = (-1, 3)
+    WINDOW_perturb_long = (-2, 3)
     perturb_epoch_long = pyal.generate_epoch_fun(
         start_point_name="idx_sol_on",
         rel_start=int(WINDOW_perturb_long[0] / BIN_SIZE),

@@ -227,7 +227,12 @@ def drop_immobile_trials(td, pre_perturb_window=(100, 200), min_immobile_bins=2,
     if plot:
         fig, ax = plt.subplots()
         ax.hist(log_speed, bins=100)
-        ax.axvline(thresh_log, color="red", linestyle="--", label=f"Otsu thresh (log={thresh_log:.2f})")
+        ax.axvline(
+            thresh_log,
+            color="red",
+            linestyle="--",
+            label=f"Otsu thresh (log={thresh_log:.2f})",
+        )
         ax.set_xlabel("Log speed")
         ax.legend()
 
@@ -240,7 +245,9 @@ def drop_immobile_trials(td, pre_perturb_window=(100, 200), min_immobile_bins=2,
         )
     ]
     dropped_count = initial_count - len(filtered_df)
-    print(f"Dropped {dropped_count} of {initial_count} rows ({dropped_count/initial_count:.2%}).")
+    print(
+        f"Dropped {dropped_count} of {initial_count} rows ({dropped_count/initial_count:.2%})."
+    )
     return filtered_df
 
 

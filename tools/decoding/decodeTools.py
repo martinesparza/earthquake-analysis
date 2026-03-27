@@ -76,14 +76,14 @@ def decoding_moving_window_no_time_concat(
             scoring=scorer,
             cv=cv,
         )
-        # y_pred = cross_val_predict(
-        #     model,
-        #     X_.reshape(-1, n_time * (n_comp)),
-        #     y_.reshape(n_trials, -1),
-        #     # scoring=scorer,
-        #     cv=cv,
-        # )
-        # y_preds.append(y_pred)
+        y_pred = cross_val_predict(
+            model,
+            X_.reshape(-1, n_time * (n_comp)),
+            y_.reshape(n_trials, -1),
+            # scoring=scorer,
+            cv=cv,
+        )
+        y_preds.append(y_pred)
         # r2 = decode.custom_r2_func(y_.reshape(n_trials, -1), y_pred)
         r2_scores.append(r2)
     y_preds = np.array(y_preds)

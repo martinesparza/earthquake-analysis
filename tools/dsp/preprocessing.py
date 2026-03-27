@@ -57,6 +57,7 @@ def preprocess(
     trial_selection_criteria: None | list = None,
     repair_time_varying_fields: None | list = None,
     combine_time_bins=True,
+    std=0.05,
 ) -> pd.DataFrame:
     """
     Preprocessing steps to manipulate trial data structure
@@ -104,6 +105,7 @@ def preprocess(
     if combine_time_bins:
         assert np.all(df.bin_size == 0.01), "bin size is not consistent!"
         df = pyal.combine_time_bins(df, int(Params.BIN_SIZE / 0.01))
+        # df = pyal.combine_time_bins(df, int(02.0 / 0.01))
         print(f"Combined every {int(Params.BIN_SIZE / 0.01)} bins")
 
     # Sqrt transformation for homoscedasticity
@@ -111,7 +113,7 @@ def preprocess(
         df = pyal.sqrt_transform_signal(df, signal)
 
     # Transformation into firing rates
-    df = pyal.add_firing_rates(df, "smooth", std=0.05)
+    df = pyal.add_firing_rates(df, "smooth", std=std)  # 0.05
     for signal in time_signals:
         print(f"Resulting {signal} ephys data shape is (NxT): {df[signal][0].T.shape}")
 
@@ -129,7 +131,12 @@ def preprocess(
 
 
 def load_and_process_session(
-    session, data_dir="/data/raw/", bhv_fields=None, min_immobile_bins=5
+    session,
+    data_dir="/data/bnd-data/raw/",
+    bhv_fields=None,
+    min_immobile_bins=5,
+    rates=True,
+    std=0.05,
 ):
     """
     Full pipeline for a session:
@@ -150,21 +157,25 @@ def load_and_process_session(
 
     # 1 & 2 — load + preprocess
     df = pyal.load_pyaldata(data_dir + session[:4] + "/" + session)
-    df = preprocess(df, only_trials=False, combine_time_bins=False)
+    df = preprocess(df, only_trials=False, combine_time_bins=False, std=std)
 
     # 3 — PCA excluding the first row (free locomotion period)
-    df = dt.add_pca_df(df.iloc[1:])
-
+    if rates:
+        df = dt.add_pca_df(df.iloc[1:])
+    else:  # spikes
+        spike_fields = [col for col in df.columns if col.endswith("_spikes")]
+        df = dt.add_pca_df(df.iloc[1:], pca_fields=spike_fields)
     # 4 — perturbation metric (requires behavioural data; skip gracefully if absent)
     has_perturbation_metric = True
-    try:
-        df = kin.compute_perturbation_metric(df, bhv_fields=bhv_fields)
-    except Exception as e:
-        print(
-            f"  WARNING: compute_perturbation_metric failed ({e}). "
-            f"Skipping disturbance metric and trial dropping."
-        )
-        has_perturbation_metric = False
+    if has_perturbation_metric:
+        try:
+            df = kin.compute_perturbation_metric(df, bhv_fields=bhv_fields)
+        except Exception as e:
+            print(
+                f"  WARNING: compute_perturbation_metric failed ({e}). "
+                f"Skipping disturbance metric and trial dropping."
+            )
+            has_perturbation_metric = False
 
     # 5 — filter trials
     df_tr = pyal.select_trials(df, df.trial_name == "trial")
@@ -228,29 +239,82 @@ def drop_unperturbed_trials(
     return df_tr.iloc[np.where(mask)[0]]
 
 
+def drop_trials_sem_crosses_zero(
+    df_tr: pd.DataFrame,
+    thresh_val: float = -2,
+    field_sem="disturb_score",
+    field_val="disturb_mean",
+) -> pd.DataFrame:
+    """
+    Drop trials whose per-trial SEM (across keypoints) does not push the
+    disturbance mean below zero, and optionally remove extreme outliers.
+
+    For each trial, disturb_score is a (n_keypoints,) array.  We compute:
+        mean = disturb_score.mean()
+        sem  = disturb_score.std() / sqrt(n_keypoints)
+
+    A trial is kept only when BOTH:
+      - mean + sem < 0   (±1 SEM interval lies entirely below zero)
+      - disturb_mean > thresh_val  (hard lower bound to remove outliers)
+
+    Parameters
+    ----------
+    df_tr      : pd.DataFrame  trial table with a 'disturb_score' column.
+    thresh_val : float         hard lower bound on disturb_mean (default -2.0).
+
+    Returns
+    -------
+    Filtered DataFrame.
+    """
+
+    def _sem_crosses(arr):
+        if not isinstance(arr, np.ndarray) or arr.size == 0:
+            return False
+        mean = arr.mean()
+        sem = arr.std() / np.sqrt(arr.size)
+        return (mean + sem) < 0
+        # return mean < 0
+
+    by_sem = df_tr[field_sem].apply(_sem_crosses)
+    by_value = df_tr[field_val] > thresh_val
+    mask = by_sem & by_value
+
+    n_total = len(df_tr)
+    print(
+        f"  drop_trials_sem_crosses_zero: "
+        f"by SEM: {by_sem.sum()}  |  by value: {by_value.sum()}  |  "
+        f"kept: {mask.sum()}/{n_total} ({100*mask.sum()/n_total:.1f}%)"
+    )
+    return df_tr.loc[mask]
+
+
 def load_sessions_for_trial_analyses(
     sessions: list[str],
     data_dir: str = "/data/bnd-data/raw/",
     rel_start: int = -200,
     rel_end: int = 300,
-    thresh_val: float = -2.0,
+    thresh_val: float = -2,
+    use_sem_dropping: bool = True,
+    rates=True,
 ) -> dict[str, dict | None]:
     """
     Load, preprocess and slice a list of sessions into a ready-to-analyse dict.
 
     For each session:
       1. load_and_process_session  →  df_tr, dstrb_idx
-      2. drop_unperturbed_trials   →  df_design
+      2. trial dropping            →  df_design
+         - use_sem_dropping=False (default): drop_unperturbed_trials (rank + hard floor)
+         - use_sem_dropping=True           : drop_trials_sem_crosses_zero (per-trial SEM + hard floor)
       3. pyal.restrict_to_interval →  perturb_td  (window: rel_start..rel_end bins)
 
     Parameters
     ----------
-    sessions        : list of session strings, e.g. ['M061_2025_03_04_10_00', ...]
-    data_dir        : path to raw data directory
-    rel_start       : start bin relative to idx_sol_on (default -200 = -2 s at 10 ms)
-    rel_end         : end bin relative to idx_sol_on   (default  300 = +3 s at 10 ms)
-    thresh_val      : passed to drop_unperturbed_trials
-
+    sessions         : list of session strings, e.g. ['M061_2025_03_04_10_00', ...]
+    data_dir         : path to raw data directory
+    rel_start        : start bin relative to idx_sol_on (default -200 = -2 s at 10 ms)
+    rel_end          : end bin relative to idx_sol_on   (default  300 = +3 s at 10 ms)
+    thresh_val       : hard lower bound on disturb_mean passed to the dropping function
+    use_sem_dropping : if True, use drop_trials_sem_crosses_zero instead of drop_unperturbed_trials
 
     Returns
     -------
@@ -263,9 +327,15 @@ def load_sessions_for_trial_analyses(
     for sess in tqdm(sessions, desc="Loading sessions"):
         print(f"\n{'='*60}\n{sess}\n{'='*60}")
         try:
-            df_tr, dstrb_idx = load_and_process_session(sess, data_dir=data_dir)
+            df_tr, dstrb_idx = load_and_process_session(sess, data_dir=data_dir, rates=rates)
             if "disturb_mean" in df_tr.columns:
-                df_design = drop_unperturbed_trials(df_tr, dstrb_idx, thresh_val=thresh_val)
+                print(f"Thresh val dropping {thresh_val}")
+                if use_sem_dropping:
+                    df_design = drop_trials_sem_crosses_zero(df_tr, thresh_val=thresh_val)
+                else:
+                    df_design = drop_unperturbed_trials(
+                        df_tr, dstrb_idx, thresh_val=thresh_val
+                    )
             else:
                 print("  No disturb_mean — skipping trial dropping.")
                 df_design = df_tr
