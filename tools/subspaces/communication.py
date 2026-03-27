@@ -1,7 +1,7 @@
 import numpy as np
 import scipy
 
-from .utils import variance_in_subspace_df, proj
+from .utils import variance_in_subspace_df, variance_in_subspace
 from .regression import cross_val_semedo_rrr_td
 
 
@@ -28,16 +28,20 @@ def compute_embedding_on_td(
     signal_x,
     signal_y,
     model,
-    origin_rank=30,
+    origin_rank=None,
     target_rank=30,
     window=(200, 450),
     null=False,
 ):
+    if origin_rank is None:
+        origin_rank = np.stack(td[signal_x].values).shape[-1]
     """Here td_arr_a has shape (n_trials, n_time, n_features"""
     td_arr_a = np.stack(td[signal_x].values)[:, window[0] : window[1], :origin_rank]
     td_arr_b = np.stack(td[signal_y].values)[:, window[0] : window[1], :target_rank]
     emb = compute_embedding_on_trials(td_arr_a, td_arr_b, model, null)
-    return emb, variance_in_subspace_df(td, signal_x, emb)
+    # return emb, variance_in_subspace_df(td, signal_x, emb)
+    var = variance_in_subspace(np.concatenate(td[signal_x].values)[:, :origin_rank], emb)
+    return emb, var
 
 
 def project_signal(td, W, signal, out_fieldname):
@@ -62,6 +66,37 @@ def project_signal(td, W, signal, out_fieldname):
     """
     trial_data = td.copy()
     trial_data[out_fieldname] = [s @ W for s in trial_data[signal].values]
+    return trial_data
+
+
+def project_signal_specific_rank(td, W, signal, out_fieldname, rank=None):
+    """
+    Project a signal using a weight matrix
+
+    Parameters
+    ----------
+    trial_data : pd.DataFrame
+        data in trial_data format
+    W : np.array
+        projection matrix
+        shape: N x D
+    signal : str
+        signal to project
+    out_fieldname : str
+        name of the field in which to store the projections
+
+    Returns
+    -------
+    trial_data with the projections added
+    """
+    trial_data = td.copy()
+    if rank is None:
+        rank = trial_data[signal].values[0].shape[-1]
+
+    # print(rank)
+    # print(W.shape)
+
+    trial_data[out_fieldname] = [s[:, :rank] @ W for s in trial_data[signal].values]
     return trial_data
 
 
@@ -144,6 +179,8 @@ def compute_potent_null_td(
     td = td_.copy()
     del td_
 
+    print(f"Computing {signal_x} -> {signal_y} potent and null subspaces")
+
     # Compute initial reduced rank regression to optimise rank
     r2, opt_rank = cross_val_semedo_rrr_td(
         td=td,
@@ -154,6 +191,7 @@ def compute_potent_null_td(
         fit_rank=fit_rank,
     )
     comm_model = ReducedRankCommSubspace(rank=opt_rank)
+    print(f"Prediction R2 = {r2.mean():.4f}. Optimal rank: {opt_rank}")
 
     # Compute embeddings
     emb_null, var_null_init = compute_embedding_on_td(
@@ -178,34 +216,67 @@ def compute_potent_null_td(
     )
 
     # Project potent and null signals
-    td = project_signal(
-        td=td, w=emb_null, signal=signal_x, out_fieldname=f"{signal_x}_null_{signal_y}"
+    td = project_signal_specific_rank(
+        td=td,
+        W=emb_null,
+        signal=signal_x,
+        out_fieldname=f"{signal_x}_null_{signal_y}",
+        rank=origin_rank,
     )  # potent
-    td = project_signal(
-        td=td, w=emb_potent, signal=signal_x, out_fieldname=f"{signal_x}_potent_{signal_y}"
+    td = project_signal_specific_rank(
+        td=td,
+        W=emb_potent,
+        signal=signal_x,
+        out_fieldname=f"{signal_x}_potent_{signal_y}",
+        rank=origin_rank,
     )  # null
 
     ############# Loop to remove activity ####################
-    print(f"Using {n_iter} iterations....")
-    signal_x = f"{signal_x}_null_{signal_y}"
+    print(f"Using {n_iter} iterations...")
+    signal_null = f"{signal_x}_null_{signal_y}"
     for i in range(n_iter):
         r2, opt_rank = cross_val_semedo_rrr_td(
             td=td,
-            signal_x=signal_x,
+            signal_x=signal_null,
             signal_y=signal_y,
             target_rank=target_rank,
             rank=opt_rank,
             fit_rank=False,
         )
-        print(r2.mean(), opt_rank)
+        print(f"\tIter: {i}. Prediction R2 = {r2.mean():.4f}")
+
         if (r2.mean() - r2.std()) > 0:
             pass
         else:
             print(f"Iteration number: {i+1}. R2 below 0, breaking")
             break
+
         emb_null, var_null = compute_embedding_on_td(
-            perturb_td_shuff, signal_x, signal_y, comm_model, null=True
+            td=td,
+            signal_x=signal_null,
+            signal_y=signal_y,
+            model=comm_model,
+            null=True,
+            target_rank=target_rank,
         )
-        td = project_signal(perturb_td_shuff, emb_null, signal_x, signal_x)  # potent
+        td = project_signal_specific_rank(
+            td, emb_null, signal=signal_null, out_fieldname=signal_null
+        )
+
+    ############ Diagnostics ###################
+    total_var = variance_in_subspace(
+        np.concatenate(td[signal_x].values), np.eye(np.stack(td[signal_x].values).shape[-1])
+    )
+    total_var_origin_rank = variance_in_subspace(
+        np.concatenate(td[signal_x].values)[:, :origin_rank], np.eye(origin_rank)
+    )
+    print("Diagnostics:")
+    print(f"\tTotal {signal_x} var:         {total_var:.2f}")
+    print(f"\tFraction Potent (dim: {opt_rank}) var:    {var_potent/total_var:.3f}")
+    print(
+        f"\tFraction Null (dim: {np.stack(td[signal_null].values).shape[-1]}) var:      {var_null/total_var:.3f}"
+    )
+    print(f"\tFraction Null init var:          {var_null_init/total_var:.3f}")
+    print(f"\tFraction {signal_x} var:      {total_var_origin_rank/total_var:.3f}")
 
     return td

@@ -244,6 +244,7 @@ def drop_trials_sem_crosses_zero(
     thresh_val: float = -2,
     field_sem="disturb_score",
     field_val="disturb_mean",
+    std=False,
 ) -> pd.DataFrame:
     """
     Drop trials whose per-trial SEM (across keypoints) does not push the
@@ -273,9 +274,16 @@ def drop_trials_sem_crosses_zero(
         mean = arr.mean()
         sem = arr.std() / np.sqrt(arr.size)
         return (mean + sem) < 0
-        # return mean < 0
 
-    by_sem = df_tr[field_sem].apply(_sem_crosses)
+    def _std_crosses(arr):
+        if not isinstance(arr, np.ndarray) or arr.size == 0:
+            return False
+        return (arr.mean() + arr.std()) < 0
+
+    if not std:
+        by_sem = df_tr[field_sem].apply(_sem_crosses)
+    else:
+        by_sem = df_tr[field_sem].apply(_std_crosses)
     by_value = df_tr[field_val] > thresh_val
     mask = by_sem & by_value
 
