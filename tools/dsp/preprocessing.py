@@ -166,7 +166,7 @@ def load_and_process_session(
         spike_fields = [col for col in df.columns if col.endswith("_spikes")]
         df = dt.add_pca_df(df.iloc[1:], pca_fields=spike_fields)
     # 4 — perturbation metric (requires behavioural data; skip gracefully if absent)
-    has_perturbation_metric = True
+    has_perturbation_metric = False
     if has_perturbation_metric:
         try:
             df = kin.compute_perturbation_metric(df, bhv_fields=bhv_fields)
@@ -304,6 +304,8 @@ def load_sessions_for_trial_analyses(
     thresh_val: float = -2,
     use_sem_dropping: bool = True,
     rates=True,
+    std=0.05,
+    std_dropping=True,
 ) -> dict[str, dict | None]:
     """
     Load, preprocess and slice a list of sessions into a ready-to-analyse dict.
@@ -335,11 +337,15 @@ def load_sessions_for_trial_analyses(
     for sess in tqdm(sessions, desc="Loading sessions"):
         print(f"\n{'='*60}\n{sess}\n{'='*60}")
         try:
-            df_tr, dstrb_idx = load_and_process_session(sess, data_dir=data_dir, rates=rates)
+            df_tr, dstrb_idx = load_and_process_session(
+                sess, data_dir=data_dir, rates=rates, std=std
+            )
             if "disturb_mean" in df_tr.columns:
                 print(f"Thresh val dropping {thresh_val}")
                 if use_sem_dropping:
-                    df_design = drop_trials_sem_crosses_zero(df_tr, thresh_val=thresh_val)
+                    df_design = drop_trials_sem_crosses_zero(
+                        df_tr, thresh_val=thresh_val, std=std_dropping
+                    )
                 else:
                     df_design = drop_unperturbed_trials(
                         df_tr, dstrb_idx, thresh_val=thresh_val

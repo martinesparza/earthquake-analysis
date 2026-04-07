@@ -121,7 +121,7 @@ RC_PARAMS_TALK: dict[str, object] = {
     "legend.fontsize": 12,
     "legend.title_fontsize": 16,
     # --- Lines & markers ---
-    "lines.linewidth": 1.5,
+    "lines.linewidth": 2,
     "lines.markersize": 7,
     "patch.linewidth": 1.5,
     # --- Axes ---

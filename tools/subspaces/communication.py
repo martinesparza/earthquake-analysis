@@ -243,9 +243,9 @@ def compute_potent_null_td(
             rank=opt_rank,
             fit_rank=False,
         )
-        print(f"\tIter: {i}. Prediction R2 = {r2.mean():.4f}")
+        print(f"\tIter: {i+1}. Prediction R2 = {r2.mean():.4f}")
 
-        if (r2.mean() - r2.std()) > 0:
+        if (r2.mean() - r2.std()) < 0:
             pass
         else:
             print(f"Iteration number: {i+1}. R2 below 0, breaking")
@@ -258,10 +258,21 @@ def compute_potent_null_td(
             model=comm_model,
             null=True,
             target_rank=target_rank,
+            window=window,
         )
         td = project_signal_specific_rank(
             td, emb_null, signal=signal_null, out_fieldname=signal_null
         )
+
+    r2, opt_rank = cross_val_semedo_rrr_td(
+        td=td,
+        signal_x=signal_null,
+        signal_y=signal_y,
+        target_rank=target_rank,
+        rank=opt_rank,
+        fit_rank=False,
+    )
+    print(f"\tFinal Prediction R2 = {r2.mean():.4f}")
 
     ############ Diagnostics ###################
     total_var = variance_in_subspace(
@@ -273,9 +284,12 @@ def compute_potent_null_td(
     print("Diagnostics:")
     print(f"\tTotal {signal_x} var:         {total_var:.2f}")
     print(f"\tFraction Potent (dim: {opt_rank}) var:    {var_potent/total_var:.3f}")
-    print(
-        f"\tFraction Null (dim: {np.stack(td[signal_null].values).shape[-1]}) var:      {var_null/total_var:.3f}"
-    )
+    try:
+        print(
+            f"\tFraction Null (dim: {np.stack(td[signal_null].values).shape[-1]}) var:      {var_null/total_var:.3f}"
+        )
+    except:
+        pass
     print(f"\tFraction Null init var:          {var_null_init/total_var:.3f}")
     print(f"\tFraction {signal_x} var:      {total_var_origin_rank/total_var:.3f}")
 

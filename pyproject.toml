@@ -29,6 +29,7 @@ pyarrow = "^22.0.0"
 fastparquet = "^2024.11.0"
 pyaldata = {path = "/home/me24/repos/pyaldata", develop = true}
 dpca = "^1.0.5"
+ipympl = "^0.10.0"
 
 
 [build-system]

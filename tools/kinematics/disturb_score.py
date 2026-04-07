@@ -21,6 +21,7 @@ import tools.dataTools as dt
 # Low-level signal processing
 # ---------------------------------------------------------------------------
 
+
 def compute_peak_freq_pre_perturb(bhv_arr, perturb_idx: int, nperseg=None, noverlap=None):
     """
     Estimate the dominant frequency of each keypoint in the 300-sample window
@@ -43,7 +44,7 @@ def compute_peak_freq_pre_perturb(bhv_arr, perturb_idx: int, nperseg=None, nover
 
 
 def compute_perturb_distrurb_score(
-    power, perturb_idx, start_idx, stop_idx=-200, dt: float = 0.01
+    power, perturb_idx, start_idx, stop_idx=-300, dt: float = 0.01
 ):
     """
     Compute the disturbance score as the baseline-subtracted integral of log-power
@@ -69,6 +70,7 @@ def compute_perturb_distrurb_score(
 # ---------------------------------------------------------------------------
 # Trial-table (pyalData) level functions
 # ---------------------------------------------------------------------------
+
 
 def compute_power_in_bhv_concat_td(td, freq_tresh=0.5, method="morlet", phase=True):
     """
@@ -148,6 +150,7 @@ def add_power_metric_to_td(td):
 # ---------------------------------------------------------------------------
 # High-level pipeline
 # ---------------------------------------------------------------------------
+
 
 def compute_perturbation_metric(df, bhv_fields, feature_dims=None):
     """

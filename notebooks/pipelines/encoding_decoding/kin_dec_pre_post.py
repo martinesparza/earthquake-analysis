@@ -20,7 +20,7 @@ import tools.dsp as dsp
 # All available sessions, keypoints, and areas
 # ---------------------------------------------------------------------------
 ALL_SESSIONS = [
-    "M061_2025_03_04_10_00",
+    # "M061_2025_03_04_10_00",
     "M061_2025_03_05_14_00",
     "M061_2025_03_06_14_00",
     "M063_2025_03_13_14_00",
@@ -29,9 +29,9 @@ ALL_SESSIONS = [
     "M062_2025_03_21_14_00",
     "M078_2025_08_06_15_00",
     "M086_2025_12_10_15_00",
-    # "M103_2026_02_18_15_30",
+    "M103_2026_02_18_15_30",
     # "M103_2026_02_19_15_30",
-    # "M106_2026_02_25_15_00",
+    "M106_2026_02_25_15_00",
     # "M106_2026_02_26_16_00",
 ]
 
@@ -116,7 +116,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--results-dir",
-    default="/data/equake_results/encoding_decoding/",
+    default="/data/equake_results/encoding_decoding_v3/",
     metavar="DIR",
     help="Output directory for pickle files",
 )
@@ -149,7 +149,7 @@ WINDOWS_BINS = {
     for name, (t0, t1) in WINDOWS_S.items()
 }
 
-pc_dict = {"MOp": 150, "CP": 150, "SSp": 150, "VAL": 150}
+pc_dict = {"MOp": 30, "CP": 30, "SSp": 20, "VAL": 50}
 
 # Per-session area exclusions
 EXCLUDE_AREAS = {
@@ -172,7 +172,7 @@ vw_r2_scorer = make_scorer(r2_score, multioutput="variance_weighted")
 
 
 def opt_ridge_alpha(x_cv, y_cv):
-    alphas = np.logspace(-4, 5, 100)
+    alphas = np.logspace(-4, 2, 100)
     ridge_cv = RidgeCV(alphas=alphas)
     ridge_cv.fit(x_cv, y_cv)
     return ridge_cv.alpha_
@@ -194,7 +194,7 @@ def score_window(neural_arr, kin_arr, t_start, t_end, model, cv):
 # Load sessions
 # ---------------------------------------------------------------------------
 all_session_processed = dsp.load_sessions_for_trial_analyses(
-    sessions, use_sem_dropping=True, rates=True
+    sessions, use_sem_dropping=True, rates=True, std=0.03
 )
 
 # ---------------------------------------------------------------------------
@@ -245,7 +245,7 @@ for session, val in all_session_processed.items():
 
             results_area[keypoint] = results_kp
 
-        out_path = f"{RESULTS_DIR}kin_dec_pre_post_{area}_{session}_all_pcs_npcs{n_pcs}.pkl"
+        out_path = f"{RESULTS_DIR}kin_dec_pre_post_{area}_{session}_npcs{n_pcs}.pkl"
         with open(out_path, "wb") as f:
             pickle.dump(
                 {
