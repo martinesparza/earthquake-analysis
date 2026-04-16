@@ -104,9 +104,9 @@ def plot_single_neuron_raster_and_psth_grid(
             psth = np.sum(trials_arr, axis=0)
             time = np.arange(trials_arr.shape[1])
             psth_ax.plot(time, psth, color=getattr(colors, area))
-            psth_ax.set_title(
-                f"Neuron id: {neuron_id}. KSLabel: {df[f"{area}_KSLabel"][0][neuron_id]}"
-            )
+            # psth_ax.set_title(
+            #     f"Neuron id: {neuron_id}. KSLabel: {df[f"{area}_KSLabel"][0][neuron_id]}"
+            # )
 
             psth_ax.set_xticks([])
 
@@ -192,8 +192,8 @@ def plot_heatmap_raster(
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="5%", pad=0.05)
         plt.colorbar(im, cax=cax)
-
+    ax.grid(False)
     if show:
         plt.show()
-
+    fig.savefig(f"heatmap_raster_{area}.pdf", bbox_inches="tight")
     return ax

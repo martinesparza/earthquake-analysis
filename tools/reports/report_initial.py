@@ -4,8 +4,6 @@ from matplotlib import pyplot as plt
 
 from tools.dsp.preprocessing import preprocess
 from tools.viz.dimensionality import plot_latents, plot_VAF
-from tools.viz.rasters import plot_heatmap_raster
-
 
 def run_initial_report(df: pd.DataFrame, areas: list, trial_selection_criteria=None):
 

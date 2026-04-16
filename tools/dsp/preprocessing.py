@@ -82,7 +82,11 @@ def preprocess(
 
     # Remove low firing neurons
     for signal in time_signals:
+        if signal.split("_")[0]+"_kslabel" in df.columns:
+            # change column name to KSLabel to match firing_rates.py
+            df = df.rename(columns={signal.split("_")[0]+"_kslabel": signal.split("_")[0]+"_KSLabel"})
         df = pyal.remove_low_firing_neurons(df, signal, 1)
+        
 
     # Select trials
     if only_trials:
@@ -106,14 +110,26 @@ def preprocess(
     for signal in time_signals:
         print(f"Resulting {signal} ephys data shape is (NxT): {df[signal][0].T.shape}")
 
-    df["sol_level_id"] = [
-        Params.sol_dir_to_level[dir_] if trial_name == "trial" else None
-        for dir_, trial_name in zip(df["values_Sol_direction"], df["trial_name"])
-    ]
+    if "M066" in df["animal"][0]:
+        return df
+    else:
+        df["sol_level_id"] = [
+            Params.sol_dir_to_level[dir_] if trial_name == "trial" else None
+            for dir_, trial_name in zip(df["values_Sol_direction"], df["trial_name"])
+        ]
 
-    df["sol_contra_ipsi"] = [
-        Params.sol_dir_to_contra_ipse[dir_] if trial_name == "trial" else None
-        for dir_, trial_name in zip(df["values_Sol_direction"], df["trial_name"])
-    ]
+        df["sol_contra_ipsi"] = [
+            Params.sol_dir_to_contra_ipse[dir_] if trial_name == "trial" else None
+            for dir_, trial_name in zip(df["values_Sol_direction"], df["trial_name"])
+        ]
+        # set first/last trial_name 
+        df.loc[df.index[0], "trial_name"]  = "free0"
+        df.loc[df.index[-1], "trial_name"] = "free1"
 
-    return df
+        cols = ["values_Sol_direction", "values_Sol_duration", "sol_level_id", "sol_contra_ipsi"]
+
+        # for intertrial rows, fill cols with values from previous trial
+        m = df["trial_name"].eq("intertrial")
+        df.loc[m, cols] = np.nan
+        df[cols] = df[cols].ffill()
+        return df

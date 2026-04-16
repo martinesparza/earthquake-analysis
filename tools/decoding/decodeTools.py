@@ -53,24 +53,26 @@ def within_decoding(
     """ """
 
     within_score = {}
-    target_ids = np.unique(allDFs[0][cat])
+    
     conf_matrices = []
     for i, df in enumerate(allDFs):
+        
         # print(df["session"][0])
+
         for condition in trial_conditions:
             df = pyal.select_trials(df, condition)
+ 
+ 
+        target_ids = np.unique(df[cat])
         if from_bhv:
             #  for predicting from behavioural data
-            AllData = dt.get_data_array_bhv(
+            _,AllData = dt.get_data_array_and_pos(
                 [df],
                 cat,
                 epoch=epoch,
-                bhv_fields=bhv_fields,
+                bhv =bhv_fields,
                 model=model,
-                n_components=n_components,
-                reduce_dim=reduce_dim,
-                transformation=transformation,
-                metric=metric,
+                n_components=n_components
             )
             # _, n_trial, n_comp = AllData1.shape
         else:
@@ -83,36 +85,38 @@ def within_decoding(
                 model=model,
                 n_components=n_components,
             )
-            AllData = AllData[0, ...]
-            n_targets, n_trial, n_time, n_comp = AllData.shape
-            # print(AllData.shape)
-            # resizing
-            X = AllData.reshape((-1, n_comp * n_time))
-            AllTar = np.repeat(target_ids, n_trial)
-            AllTar = np.array(AllTar, dtype=int).flatten()
-            # print(AllTar)
-            if control:
-                np.random.shuffle(AllTar)
-            if ax is not None:
-                # Predictions for confusion matrix
-                # print(X.shape)
-                # print(AllTar.shape)
+        AllData = AllData[0, ...]
+        n_targets, n_trial, n_time, n_comp = AllData.shape
+        # print(AllData.shape)
+        # resizing
+        X = AllData.reshape((-1, n_comp * n_time))
+        AllTar = np.repeat(target_ids, n_trial)
+    
+        AllTar = np.array(AllTar, dtype=int).flatten()
+        # print(AllTar)
+        if control:
+            np.random.shuffle(AllTar)
+        if ax is not None:
+            # Predictions for confusion matrix
+            # print(X.shape)
+            # print(AllTar.shape)
 
-                y_pred = cross_val_predict(classifier_model(), X, AllTar, cv=5)
+            y_pred = cross_val_predict(classifier_model(), X, AllTar, cv=5)
 
-                # Compute confusion matrix for session
-                conf_mat = confusion_matrix(AllTar, y_pred, labels=target_ids)
-                conf_matrices.append(conf_mat)
+            # Compute confusion matrix for session
+            conf_mat = confusion_matrix(AllTar, y_pred, labels=target_ids)
+            conf_matrices.append(conf_mat)
 
-                # Compute accuracy
-                within_score[df.session[0]] = np.mean(y_pred == AllTar)
-            else:
-                _score = cross_val_score(
-                    classifier_model(), X, AllTar, scoring="accuracy", cv=5
-                ).mean()
-                within_score[df.session[0]] = np.mean(_score)
+            # Compute accuracy
+            within_score[df.session[0]] = np.mean(y_pred == AllTar)
+        else:
+            _score = cross_val_score(
+                classifier_model(), X, AllTar, scoring="accuracy", cv=5
+            ).mean()
+            within_score[df.session[0]] = np.mean(_score)
 
     if ax is not None:
+       
         avg_conf_matrix = np.mean(conf_matrices, axis=0)
         avg_conf_matrix = (
             avg_conf_matrix.astype("float") / avg_conf_matrix.sum(axis=1)[:, np.newaxis]
@@ -219,6 +223,12 @@ def plot_decoding_moving_window(
     window_length=0.1,
     step=0.03,
     trial_conditions=[],
+    from_bhv=False,
+    bhv_fields=["all"],
+    reduce_dim=False,
+    control=False,
+    transformation=None,
+
 ):
     """
     PCA model obtained on all the trials concatenated, not restricted to the moving window.
@@ -273,7 +283,12 @@ def plot_decoding_moving_window(
             within_results = within_decoding(
                 cat=category, allDFs=modified_df_list, area=area, units=units,
                 n_components=n_components, epoch=perturb_epoch,
-                model=model, trial_conditions=trial_conditions
+                model=model, trial_conditions=trial_conditions,
+                from_bhv=from_bhv,
+                bhv_fields=bhv_fields,
+                reduce_dim=reduce_dim,
+                control=control,
+                transformation=transformation
             )
             within_results_over_time.append([result for result in within_results.values()])
 
@@ -282,6 +297,11 @@ def plot_decoding_moving_window(
     time_axis = ((time_points + window_size_bins) * bin_size) * 1000  #
 
     for i, area in enumerate(areas):
+        data = within_results_per_area[i]  # shape (T, S)
+        mean_over_sessions = np.mean(data, axis=1)  # length T
+        idx_peak = np.argmax(mean_over_sessions)
+        peak_time_ms = time_axis[idx_peak]
+        print(f"Peak decoding for {area} at {peak_time_ms:.1f} ms (mean accuracy = {mean_over_sessions[idx_peak]:.3f})")
         utility.shaded_errorbar(
             ax,
             time_axis,
@@ -393,3 +413,18 @@ def plot_decoding_moving_window_per_component(
     ax.set_xlabel("Time (ms)")
     ax.set_ylabel("Number of PCs")
     ax.set_title(f"Decoding Performance Over Time ({area})")
+
+
+
+
+def plot_classifier_performance_within(cat, allDFs, epoch, areas = ["MOp"],trial_conditions = [], components_range = range(10),model = "pca",save_path = "/home/il620/earthquake-analysis/notebooks/classifier_performance.pdf",reduce_dim = False, bhv = False,bhv_fields = ["all"],control = False, transformation = "percentile", metric = "median",classifier_model = GaussianNB ):
+    
+    target_ids = np.unique(allDFs[0][cat])
+    chance_level = 1/len(target_ids)
+    scores = {}
+    for area in areas:
+        scores[area] = {}
+        for n_components in components_range:
+            within_score = within_decoding(cat, allDFs, epoch, area, model = model, trial_conditions=trial_conditions, n_components=n_components,reduce_dim = reduce_dim, from_bhv = bhv,bhv_fields = bhv_fields,control = control, transformation = transformation, metric = metric, classifier_model = classifier_model)
+            scores[area][n_components] = within_score
+    return scores
