@@ -1,0 +1,50 @@
+{
+    "M103_2026_02_17_14_00": {
+        "MOp_rates": 160,
+        "CP_rates": 70,
+        "VAL_rates": 203,
+        "SSp_rates": null
+    },
+    "M103_2026_02_18_15_30": {
+        "MOp_rates": 125,
+        "CP_rates": 10,
+        "VAL_rates": null,
+        "SSp_rates": 100
+    },
+    "M103_2026_02_19_15_30": {
+        "MOp_rates": 90,
+        "CP_rates": 10,
+        "VAL_rates": null,
+        "SSp_rates": 75
+    },
+    "M103_2026_02_20_16_00": {
+        "MOp_rates": 22,
+        "CP_rates": 10,
+        "VAL_rates": null,
+        "SSp_rates": null
+    },
+    "M106_2026_02_24_15_00": {
+        "MOp_rates": 125,
+        "CP_rates": 25,
+        "VAL_rates": 160,
+        "SSp_rates": null
+    },
+    "M106_2026_02_25_15_00": {
+        "MOp_rates": 130,
+        "CP_rates": 25,
+        "VAL_rates": null,
+        "SSp_rates": 130
+    },
+    "M106_2026_02_26_16_00": {
+        "MOp_rates": 80,
+        "CP_rates": 10,
+        "VAL_rates": null,
+        "SSp_rates": 68
+    },
+    "M106_2026_02_27_16_00": {
+        "MOp_rates": 12,
+        "CP_rates": 10,
+        "VAL_rates": 145,
+        "SSp_rates": 5
+    }
+}
