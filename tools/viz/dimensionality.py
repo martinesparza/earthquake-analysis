@@ -35,6 +35,8 @@ def plot_VAF(
     linestyle="-",
     normalize_x_axis=False,
     show=True,
+    label_ = None,
+    trial_condition = None,
 ):
     """
     Plot VAF for each area in areas list, averaged across sessions in data_list, with shaded errorbars.
@@ -48,17 +50,29 @@ def plot_VAF(
         areas = list(areas.keys())
     else:
         units_per_area = None
-
+    
     for i, area in enumerate(areas):
         field = f"{area}_rates" if units_per_area is None else "all_rates"
         VAF_per_area = []
         for session, df in enumerate(data_list):
-            df_ = pyal.restrict_to_interval(df, epoch_fun=epoch) if epoch is not None else df
-            rates = np.concatenate(df_[field].values, axis=0)
+            if trial_condition is not None:
+                df_ = pyal.select_trials(df, df.trial_name == trial_condition)
+                if trial_condition == "free":
+                    if "Pre" in label_:
+                        df_ = df_.iloc[0]
+                    elif "Post" in label_:
+                        df_ = df_.iloc[1]
+            df_ = pyal.restrict_to_interval(df_, epoch_fun=epoch) if epoch is not None else df_
+            if type(df_) == pd.core.series.Series:
+                rates = df_[field][:]
+            else:
+                rates = np.concatenate(df_[field].values, axis=0)
             if units_per_area is not None:
                 rates = rates[:, units_per_area[i][0] : units_per_area[i][1]]
 
-            n_components = rates.shape[-1]
+            if n_components is None:
+                n_components = rates.shape[-1]
+            # n_components = rates.shape[-1]
             model = PCA(n_components=n_components, svd_solver="full")
             rates_model = model.fit(rates)
             if isinstance(model, PCA):
@@ -74,7 +88,7 @@ def plot_VAF(
             ax,
             x_,
             np.array(VAF_per_area).T,
-            label=area,
+            label=area if label_ is None else area+'_'+label_,
             color=getattr(params.colors, area, "k"),
             linestyle=linestyle,
         )
@@ -83,15 +97,126 @@ def plot_VAF(
     if normalize_x_axis:
         ax.set_xlabel("Fraction of PCs")
     ax.set_ylabel("VAF (%)")
-    ax.set_title("Variance accounted for by PCs")
-    ax.axhline(y=0.8, color="red", linestyle="--")
+    # ax.set_title("Variance accounted for by PCs")
+    # ax.axhline(y=0.8, color="red", linestyle="--")
     ax.legend()
+    print(pca_pr(rates))
     if show:
         plt.show()
     else:
         return ax
+def plot_VAF_and_pr(
+    ax,
+    ax_pr,
+    data_list: list[pd.DataFrame],
+    epoch=None,
+    areas=["all"],
+    n_neighbors=10,
+    linestyle="-",
+    normalize_x_axis=False,
+    show=True,
+    label_=None,
+    trial_condition=None,
+    n_components=None,
+):
+    """
+    Plot VAF on `ax` for each area in areas list, averaged across sessions in data_list,
+    with shaded errorbars. Also plot the mean±SD participation ratio (PR) on `ax_pr`.
+    """
+    if isinstance(data_list, pd.DataFrame):
+        data_list = [data_list]
+    if isinstance(areas, str):
+        areas = [areas]
+    if isinstance(areas, dict):
+        units_per_area = list(areas.values())
+        areas = list(areas.keys())
+    else:
+        units_per_area = None
 
+    for i, area in enumerate(areas):
+        field = f"{area}_rates" if units_per_area is None else "all_rates"
+        VAF_per_area = []
+        PR_per_area = []
 
+        for df in data_list:
+            # select trials
+            if trial_condition is not None:
+                df_ = pyal.select_trials(df, df.trial_name == trial_condition)
+                if trial_condition == "free":
+                    if "Pre" in label_:
+                        df_ = df_.iloc[0]
+                    elif "Post" in label_:
+                        df_ = df_.iloc[1]
+            else:
+                df_ = df
+
+            # restrict epoch
+            df_ = pyal.restrict_to_interval(df_, epoch_fun=epoch) if epoch is not None else df_
+
+            # extract rates
+            if isinstance(df_, pd.core.series.Series):
+                rates = df_[field][:]
+            else:
+                rates = np.concatenate(df_[field].values, axis=0)
+
+            if units_per_area is not None:
+                lo, hi = units_per_area[i]
+                rates = rates[:, lo:hi]
+
+            # PCA VAF
+            if n_components is None:
+                n_components = rates.shape[-1]
+            model = PCA(n_components=n_components, svd_solver="full").fit(rates)
+            cumvar = np.cumsum(model.explained_variance_ratio_)
+            VAF_per_area.append(cumvar)
+
+            # participation ratio
+            PR_per_area.append(pca_pr(rates))
+
+        # --- Plot VAF ---
+        x_vals = np.arange(1, n_components + 1)
+        if normalize_x_axis:
+            x_vals = np.linspace(0, 1, n_components)
+
+        color = getattr(params.colors, area, "k")
+        utility.shaded_errorbar(
+            ax,
+            x_vals,
+            np.array(VAF_per_area).T,
+            label=area if label_ is None else label_,
+            color=color,
+            linestyle=linestyle,
+        )
+
+        # --- Plot PR on ax_pr ---
+        pr_mean = np.mean(PR_per_area)
+        pr_sd = np.std(PR_per_area)
+        ax_pr.errorbar(
+            [i], [pr_mean],
+            yerr=[pr_sd],
+            fmt='o',
+            color=color,
+            label=label_ if label_ is not None else area
+        )
+
+    # finalize VAF plot
+    ax.set_xlabel("Number of PCs " + ("(fraction)" if normalize_x_axis else ""))
+    ax.set_ylabel("VAF (%)")
+    ax.set_title("Variance accounted for by PCs")
+    ax.axhline(y=0.8, color="red", linestyle="--")
+    ax.legend()
+
+    # finalize PR plot
+    ax_pr.set_xticks(range(len(areas)))
+    ax_pr.set_xticklabels(areas)
+    ax_pr.set_ylabel("Participation Ratio")
+    ax_pr.set_title("Participation Ratio (mean ± SD)")
+    ax_pr.legend()
+
+    if show:
+        plt.show()
+    else:
+        return ax, ax_pr
 def plot_pairwise_corr(ax, df, areas, epoch, show=True):
     """
     Plot pairwise correlation for one session for each area in areas list.
@@ -104,7 +229,10 @@ def plot_pairwise_corr(ax, df, areas, epoch, show=True):
         field = f"{area}_rates"
 
         df_ = pyal.restrict_to_interval(df, epoch_fun=epoch) if epoch is not None else df
-        rates = np.concatenate(df_[field].values, axis=0)
+        if type(df_) == pd.core.series.Series:
+                rates = df_[field][:]
+        else:
+                rates = np.concatenate(df_[field].values, axis=0)
         correlation_matrix = np.corrcoef(rates.T)
         sns.heatmap(
             correlation_matrix,
