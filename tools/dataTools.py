@@ -12,6 +12,68 @@ from sklearn.decomposition import PCA
 from tools.params import Params
 from tools.params import paths
 from typing import List, Tuple, Optional
+
+def remove_unstable_neurons(
+    trial_data: pd.DataFrame,
+    signal: str,
+    threshold: float = 0.5,
+    window_size_s: float = 60,
+    verbose: bool = True,
+    participation_threshold: float = 1,
+) -> pd.DataFrame:
+    """
+    Remove neurons from signal whose average firing rate
+    across all trials is lower than a threshold
+
+
+    Parameters
+    ----------
+    trial_data : pd.DataFrame
+        data in trial_data format
+    signal : str
+        signal from which to calculate the average firing rates
+        ideally spikes or rates
+    threshold : float
+        threshold in Hz
+    divide_by_bin_size : bool, optional
+        whether to divide by the bin size when calculating the firing rates
+    verbose : bool, optional, default False
+        print a message about how many neurons were removed
+
+    Returns
+    -------
+    trial_data with the low-firing neurons removed from the
+    signal and the corresponding unit_guide
+    """
+    
+    if signal.endswith("_spikes"):
+        threshold = threshold * Params.BIN_SIZE
+   
+    area_name = signal.split("_")[0]
+    unit_guide = area_name + "_unit_guide"
+    chan_best = area_name + "_chan_best"
+    kslabel = area_name + "_KSLabel" 
+
+    meta_df, X = build_window_tensor_sliding_session(trial_data,window_size_s=window_size_s,field = signal, overlap_pct=0)
+    X_mean_per_window = X.mean(axis=1)
+    active = X_mean_per_window.T> threshold
+    presence_ratio = active.float().mean(axis=1)
+    mask = presence_ratio >= participation_threshold
+    trial_data[signal] = [arr[:, mask] for arr in trial_data[signal]]
+    if unit_guide in trial_data.columns:
+        trial_data[unit_guide] = [arr[mask, :] for arr in trial_data[unit_guide]]
+
+    if kslabel in trial_data.columns:
+        trial_data[kslabel] = [arr[mask] for arr in trial_data[kslabel]]
+
+    if chan_best in trial_data.columns:
+        trial_data[chan_best] = [arr[mask] for arr in trial_data[chan_best]]
+
+    if verbose:
+        print(f"Removed {(~mask).int().sum()} neurons from {signal}.")
+
+    return trial_data
+
 def get_n_time(df, trial_name, field = "MOp_rates"):
     return np.concatenate(df[df['trial_name'] == trial_name][field].values, axis=0).shape[0]
 
@@ -1195,3 +1257,8 @@ def trial_change_boundaries(meta_df: pd.DataFrame, col: str = "trial_name") -> L
     change = names[1:] != names[:-1]
     # boundary index is the index of the first element of the new block
     return (np.where(change)[0] + 1).astype(int).tolist()
+
+
+
+
+

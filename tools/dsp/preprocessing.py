@@ -1,11 +1,8 @@
 import numpy as np
 import pandas as pd
 import pyaldata as pyal
-
 from tools.params import Params
-
-
-# Define the function
+from . import utils
 def _insert_nans_and_extend_to_spikes_shape_inplace(df, idx_col, value_col, ref_col):
     new_rows = []
 
@@ -86,6 +83,8 @@ def preprocess(
             # change column name to KSLabel to match firing_rates.py
             df = df.rename(columns={signal.split("_")[0]+"_kslabel": signal.split("_")[0]+"_KSLabel"})
         df = pyal.remove_low_firing_neurons(df, signal, 1)
+        from tools.dataTools import remove_unstable_neurons
+        df = remove_unstable_neurons(df, signal,threshold = 0.5, window_size_s=60, participation_threshold=1)
         
 
     # Select trials
@@ -106,7 +105,8 @@ def preprocess(
         df = pyal.sqrt_transform_signal(df, signal)
 
     # Transformation into firing rates
-    df = pyal.add_firing_rates(df, "smooth", std=0.05)
+    df = pyal.add_firing_rates_full_session(df, std=0.02)
+
     for signal in time_signals:
         print(f"Resulting {signal} ephys data shape is (NxT): {df[signal][0].T.shape}")
 
