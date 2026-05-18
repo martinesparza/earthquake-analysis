@@ -175,6 +175,7 @@ def compute_potent_null_td(
     window=(200, 450),
     fit_rank=True,
     rank=10,
+    thresh=0.01,
 ):
     td = td_.copy()
     del td_
@@ -245,10 +246,10 @@ def compute_potent_null_td(
         )
         print(f"\tIter: {i+1}. Prediction R2 = {r2.mean():.4f}")
 
-        if (r2.mean() - r2.std()) < 0:
+        if (r2.mean() - r2.std()) > thresh:
             pass
         else:
-            print(f"Iteration number: {i+1}. R2 below 0, breaking")
+            print(f"Iteration number: {i+1}. R2 below {thresh}, breaking")
             break
 
         emb_null, var_null = compute_embedding_on_td(

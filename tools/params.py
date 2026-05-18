@@ -122,3 +122,4 @@ class colors:
     ipsi = "cornflowerblue"
     GPe = "k"
     bhv_light = np.array([100, 100, 100]) / 255
+    bhv_light_light = np.array([175, 175, 175]) / 255

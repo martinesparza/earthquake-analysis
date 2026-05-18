@@ -166,7 +166,7 @@ def load_and_process_session(
         spike_fields = [col for col in df.columns if col.endswith("_spikes")]
         df = dt.add_pca_df(df.iloc[1:], pca_fields=spike_fields)
     # 4 — perturbation metric (requires behavioural data; skip gracefully if absent)
-    has_perturbation_metric = False
+    has_perturbation_metric = True
     if has_perturbation_metric:
         try:
             df = kin.compute_perturbation_metric(df, bhv_fields=bhv_fields)

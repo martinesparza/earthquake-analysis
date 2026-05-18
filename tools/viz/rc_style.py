@@ -115,17 +115,17 @@ RC_PARAMS_TALK: dict[str, object] = {
     # --- Font ---
     "font.size": 16,
     "axes.titlesize": 14,
-    "axes.labelsize": 12,
-    "xtick.labelsize": 11,
-    "ytick.labelsize": 11,
+    "axes.labelsize": 14,
+    "xtick.labelsize": 12,
+    "ytick.labelsize": 12,
     "legend.fontsize": 12,
     "legend.title_fontsize": 16,
     # --- Lines & markers ---
-    "lines.linewidth": 2,
+    "lines.linewidth": 2.25,
     "lines.markersize": 7,
     "patch.linewidth": 1.5,
     # --- Axes ---
-    "axes.linewidth": 1.5,
+    "axes.linewidth": 2,
     # --- Ticks ---
     "xtick.major.width": 1.5,
     "ytick.major.width": 1.5,

@@ -311,7 +311,8 @@ def variance_in_dims(X, W):
     np.array with the variance in the each dimension
     """
     W_norm = W / np.linalg.norm(W, axis=0)
-    return np.diag(W_norm.T @ np.cov(X.T) @ W_norm)
+    cov = np.atleast_2d(np.cov(X.T))
+    return np.diag(W_norm.T @ cov @ W_norm)
 
 
 class ReducedRankCommSubspace:
@@ -419,6 +420,91 @@ def compute_embedding(td, signal_x, signal_y, time_bin_window, model, k=None, nu
             W = scipy.linalg.null_space(model.coef_.T)
 
     return W
+
+
+def match_null_variance_to_potent(td_, areas):
+    """
+    For each ordered area pair (area_a, area_b), compare the total variance
+    (trace of covariance) of the potent and null subspaces.  If null variance
+    exceeds potent variance, greedily subsample null dimensions — sorted by
+    per-dimension variance, descending — until the cumulative variance is as
+    close as possible to the potent variance.  If potent >= null, the pair is
+    left unchanged.
+
+    Parameters
+    ----------
+    td_ : pd.DataFrame
+        pyalData trial table containing columns
+        ``{area_a}_rates_pca_potent_{area_b}_rates_pca`` and
+        ``{area_a}_rates_pca_null_{area_b}_rates_pca`` for every pair.
+    areas : list[str]
+        List of area names to iterate over.
+
+    Returns
+    -------
+    pd.DataFrame
+        Copy of ``td_`` with null columns subsampled where needed.
+    """
+    td = td_.copy()
+
+    for area_a in areas:
+        for area_b in areas:
+            # print(area_a)
+            if area_a == area_b:
+                continue
+
+            col_potent = f"{area_a}_rates_pca_potent_{area_b}_rates_pca"
+            col_null = f"{area_a}_rates_pca_null_{area_b}_rates_pca"
+
+            potent_mat = np.concatenate(td[col_potent].values, axis=0)
+            null_mat = np.concatenate(td[col_null].values, axis=0)
+
+            n_dims = potent_mat.shape[1]
+            var_potent = np.trace(np.cov(potent_mat.T)) if n_dims > 1 else potent_mat.var()
+            n_dims_null = null_mat.shape[1]
+            var_null = np.trace(np.cov(null_mat.T)) if n_dims_null > 1 else null_mat.var()
+
+            if var_null <= var_potent:
+                print(
+                    f"{area_a} -> {area_b}: null var ({var_null:.1f}) <= potent var "
+                    f"({var_potent:.1f}), skipping"
+                )
+                continue
+
+            # Per-dimension variance of null, sorted descending
+            dim_vars = variance_in_dims(null_mat, np.eye(n_dims_null))
+            sorted_idx = np.argsort(dim_vars)[::-1]
+
+            cumvar = 0.0
+            selected = []
+            for idx in sorted_idx:
+                next_cumvar = cumvar + dim_vars[idx]
+                if selected and abs(next_cumvar - var_potent) > abs(cumvar - var_potent):
+                    break
+                selected.append(idx)
+                cumvar = next_cumvar
+
+            # Guard: always keep at least 1 dimension to avoid downstream crashes
+            if len(selected) == 0:
+                selected = [sorted_idx[0]]
+                print(
+                    f"{area_a} -> {area_b}: potent var ({var_potent:.1f}) lower than "
+                    f"smallest null dim — keeping 1 null dimension"
+                )
+
+            selected = np.array(selected)
+            achieved_var = variance_in_dims(
+                null_mat[:, selected], np.eye(len(selected))
+            ).sum()
+
+            print(
+                f"{area_a} -> {area_b}: null var {var_null:.1f} -> {achieved_var:.1f} "
+                f"(potent: {var_potent:.1f}) | dims {n_dims_null} -> {len(selected)}"
+            )
+
+            td[col_null] = td[col_null].apply(lambda arr: arr[:, selected])
+
+    return td
 
 
 def compute_overlap_between_subspaces(emb_a, emb_b):
