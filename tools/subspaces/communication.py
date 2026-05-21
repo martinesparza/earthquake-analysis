@@ -190,6 +190,7 @@ def compute_potent_null_td(
         target_rank=target_rank,
         rank=rank,
         fit_rank=fit_rank,
+        origin_rank=origin_rank,
     )
     comm_model = ReducedRankCommSubspace(rank=opt_rank)
     print(f"Prediction R2 = {r2.mean():.4f}. Optimal rank: {opt_rank}")
