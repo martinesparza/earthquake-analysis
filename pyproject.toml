@@ -12,6 +12,8 @@ scipy = "^1.17.1"
 matplotlib = "^3.11.0"
 tqdm = "^4.68.3"
 scikit-learn = "^1.9.0"
+pyaldata = { path = "/home/jovyan/datascience/workspaces/mesparza-40inbrain-2dneuroelectronics-2ecom/pyaldata", develop = true }
+jupyterlab = "^4.6.0"
 
 
 [build-system]
