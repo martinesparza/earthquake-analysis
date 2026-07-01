@@ -1,21 +1,47 @@
-[tool.poetry]
+# [tool.poetry]
+# name = "earthquake-analysis"
+# version = "0.1.0"
+# description = ""
+# authors = ["Your Name <you@example.com>"]
+# readme = "README.md"
+
+# [tool.poetry.dependencies]
+# python = "^3.12"
+# numpy = "^2.4.6"
+# scipy = "^1.17.1"
+# matplotlib = "^3.11.0"
+# tqdm = "^4.68.3"
+# scikit-learn = "^1.9.0"
+# pyaldata = { path = "C:\\Users\\MartinEsparzaINBRAIN\\repos\\pyaldata", develop = true }
+# jupyterlab = "^4.6.0"
+
+
+# [build-system]
+# requires = ["poetry-core"]
+# build-backend = "poetry.core.masonry.api"
+
+[project]
 name = "earthquake-analysis"
 version = "0.1.0"
 description = ""
-authors = ["Your Name <you@example.com>"]
 readme = "README.md"
+requires-python = ">=3.12,<4.0"
+dependencies = [
+    "numpy>=2.4.6,<3",
+    "scipy>=1.17.1,<2",
+    "matplotlib>=3.11.0,<4",
+    "tqdm>=4.68.3,<5",
+    "scikit-learn>=1.9.0,<2",
+    "pyaldata",
+    "jupyterlab>=4.6.0,<5",
+]
 
-[tool.poetry.dependencies]
-python = "^3.12"
-numpy = "^2.4.6"
-scipy = "^1.17.1"
-matplotlib = "^3.11.0"
-tqdm = "^4.68.3"
-scikit-learn = "^1.9.0"
-pyaldata = { path = "/home/jovyan/datascience/workspaces/mesparza-40inbrain-2dneuroelectronics-2ecom/pyaldata", develop = true }
-jupyterlab = "^4.6.0"
+[tool.uv]
+package = false
 
+[tool.uv.sources]
+pyaldata = { path = "C:\\Users\\MartinEsparzaINBRAIN\\repos\\pyaldata", editable = true }
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"

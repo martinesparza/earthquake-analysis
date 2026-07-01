@@ -132,7 +132,7 @@ def preprocess(
 
 def load_and_process_session(
     session,
-    data_dir="/home/jovyan/mouse-data-london/proc/",
+    data_dir="C:/data/raw/",
     bhv_fields=None,
     min_immobile_bins=5,
     rates=True,

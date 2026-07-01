@@ -3,6 +3,6 @@
     "python.analysis.extraPaths": [
         "./tools"
     ],
-    "python-envs.defaultEnvManager": "ms-python.python:poetry",
-    "python-envs.defaultPackageManager": "ms-python.python:poetry" // options: "google", "numpy", "sphinx"
+    "python-envs.defaultEnvManager": "ms-python.python:venv",
+    "python-envs.defaultPackageManager": "ms-python.python:pip" // options: "google", "numpy", "sphinx"
 }
