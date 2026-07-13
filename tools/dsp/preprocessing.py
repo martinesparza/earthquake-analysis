@@ -169,10 +169,10 @@ def load_and_process_session(
     has_perturbation_metric = True
     if has_perturbation_metric:
         try:
-            df = kin.compute_perturbation_metric(df, bhv_fields=bhv_fields)
+            df = kin.compute_perturb_score(df, bhv_fields=bhv_fields)
         except Exception as e:
             print(
-                f"  WARNING: compute_perturbation_metric failed ({e}). "
+                f"  WARNING: compute_perturb_score failed ({e}). "
                 f"Skipping disturbance metric and trial dropping."
             )
             has_perturbation_metric = False

@@ -1,7 +1,7 @@
 """
 Functions for computing the perturbation disturbance score from kinematic data.
 
-Pipeline (high-level entry point: compute_perturbation_metric):
+Pipeline (high-level entry point: compute_perturb_score):
   1. Stack keypoint xyz arrays → `bhv` (T × 36)  [dt.add_bhv]
   2. Prepend preceding intertrial segment → `bhv_concat`  [dt.concat_previous_intertrial_signal]
   3. Index perturbation onset and trial start inside bhv_concat  [dt.add_concat_perturb_time/trial_start]
@@ -16,13 +16,12 @@ import scipy
 import tools.dsp as dsp
 import tools.dataTools as dt
 
-
 # ---------------------------------------------------------------------------
 # Low-level signal processing
 # ---------------------------------------------------------------------------
 
 
-def compute_peak_freq_pre_perturb(bhv_arr, perturb_idx: int, nperseg=None, noverlap=None):
+def compute_peak_freq_pre_perturb(bhv_arr, perturb_idx: int, nperseg=300, noverlap=None):
     """
     Estimate the dominant frequency of each keypoint in the 300-sample window
     before the perturbation using Welch's method.
@@ -43,9 +42,7 @@ def compute_peak_freq_pre_perturb(bhv_arr, perturb_idx: int, nperseg=None, nover
     return freqs[np.argmax(psd, axis=0)], freqs, psd
 
 
-def compute_perturb_distrurb_score(
-    power, perturb_idx, start_idx, stop_idx=-300, dt: float = 0.01
-):
+def compute_perturb_score_row(power, perturb_idx, start_idx, stop_idx=-300, dt: float = 0.01):
     """
     Compute the disturbance score as the baseline-subtracted integral of log-power
     in the post-perturbation window.
@@ -72,7 +69,7 @@ def compute_perturb_distrurb_score(
 # ---------------------------------------------------------------------------
 
 
-def compute_power_in_bhv_concat_td(td, freq_tresh=0.5, method="morlet", phase=True):
+def compute_power_in_bhv_concat_td(td, freq_tresh=2, method="morlet", phase=True):
     """
     For each perturbation trial, estimate the dominant gait frequency pre-perturbation,
     then compute Morlet log-power (and instantaneous phase) at that frequency for every
@@ -97,7 +94,7 @@ def compute_power_in_bhv_concat_td(td, freq_tresh=0.5, method="morlet", phase=Tr
             row.bhv_concat, perturb_idx=row.concat_perturb_time
         )
         peak_mean_freq = freqs[np.argmax(psd.mean(-1), axis=0)]
-        if peak_mean_freq < 2:
+        if peak_mean_freq < freq_tresh:
             n_skipped += 1
             continue
 
@@ -124,7 +121,7 @@ def compute_power_in_bhv_concat_td(td, freq_tresh=0.5, method="morlet", phase=Tr
     return td
 
 
-def add_power_metric_to_td(td):
+def add_perturb_score_td(td):
     """
     Compute `disturb_score` per trial from the `power` column.
 
@@ -139,7 +136,7 @@ def add_power_metric_to_td(td):
     for idx, row in td.iterrows():
         if not isinstance(row.power, np.ndarray):
             continue
-        td.at[idx, "disturb_score"] = compute_perturb_distrurb_score(
+        td.at[idx, "disturb_score"] = compute_perturb_score_row(
             row.power,
             row.concat_perturb_time,
             start_idx=100,
@@ -152,7 +149,7 @@ def add_power_metric_to_td(td):
 # ---------------------------------------------------------------------------
 
 
-def compute_perturbation_metric(df, bhv_fields, feature_dims=None):
+def compute_perturb_score(df, bhv_fields, feature_dims=None):
     """
     Full pipeline to build bhv_concat and compute the per-trial disturbance score.
 
@@ -188,5 +185,5 @@ def compute_perturbation_metric(df, bhv_fields, feature_dims=None):
     df = dt.add_concat_perturb_time(df)
     df = dt.add_concat_trial_start(df)
     df = compute_power_in_bhv_concat_td(df)
-    df = add_power_metric_to_td(df)
+    df = add_perturb_score_td(df)
     return df
