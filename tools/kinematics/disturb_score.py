@@ -17,14 +17,27 @@ import tools.dsp as dsp
 import tools.dataTools as dt
 
 # ---------------------------------------------------------------------------
+# Shared timing constants (10 ms bins / 100 Hz throughout)
+# ---------------------------------------------------------------------------
+
+PRE_PERTURB_WINDOW = 300  # samples (3 s) used to estimate the pre-perturbation PSD
+BASELINE_START_SAMPLES = (
+    100  # samples (1 s) into bhv_concat where the baseline window starts
+)
+POST_PERTURB_END_OFFSET = -300
+# samples (3 s) excluded from the end of the integration window
+
+# ---------------------------------------------------------------------------
 # Low-level signal processing
 # ---------------------------------------------------------------------------
 
 
-def compute_peak_freq_pre_perturb(bhv_arr, perturb_idx: int, nperseg=300, noverlap=None):
+def compute_peak_freq_pre_perturb(
+    bhv_arr, perturb_idx: int, nperseg=PRE_PERTURB_WINDOW, noverlap=None, nfft=1024
+):
     """
-    Estimate the dominant frequency of each keypoint in the 300-sample window
-    before the perturbation using Welch's method.
+    Estimate the dominant frequency of each keypoint in the PRE_PERTURB_WINDOW-sample
+    window before the perturbation using Welch's method.
 
     Returns
     -------
@@ -33,16 +46,23 @@ def compute_peak_freq_pre_perturb(bhv_arr, perturb_idx: int, nperseg=300, noverl
     psd        : np.ndarray  (n_freqs, n_keypoints)
     """
     freqs, psd = scipy.signal.welch(
-        bhv_arr[perturb_idx - 300 : perturb_idx],
+        bhv_arr[perturb_idx - PRE_PERTURB_WINDOW : perturb_idx],
         fs=100,
         nperseg=nperseg,
         noverlap=noverlap,
+        nfft=nfft,
         axis=0,
     )
     return freqs[np.argmax(psd, axis=0)], freqs, psd
 
 
-def compute_perturb_score_row(power, perturb_idx, start_idx, stop_idx=-300, dt: float = 0.01):
+def compute_perturb_score_row(
+    power,
+    perturb_idx,
+    start_idx,
+    stop_idx=POST_PERTURB_END_OFFSET,
+    bin_size: float = 0.01,
+):
     """
     Compute the disturbance score as the baseline-subtracted integral of log-power
     in the post-perturbation window.
@@ -53,7 +73,7 @@ def compute_perturb_score_row(power, perturb_idx, start_idx, stop_idx=-300, dt: 
     perturb_idx : int         index of perturbation onset in the concatenated signal
     start_idx   : int         start of the pre-perturbation baseline window
     stop_idx    : int         end of the post-perturbation window (negative = from end)
-    dt          : float       time step in seconds (default 0.01 s = 10 ms)
+    bin_size    : float       time step in seconds (default 0.01 s = 10 ms)
 
     Returns
     -------
@@ -61,7 +81,7 @@ def compute_perturb_score_row(power, perturb_idx, start_idx, stop_idx=-300, dt: 
     """
     power = power - power[start_idx:perturb_idx].mean(0)
     post = power[perturb_idx:stop_idx, :]
-    return np.nansum(post, axis=0) * dt
+    return np.nansum(post, axis=0) * bin_size
 
 
 # ---------------------------------------------------------------------------
@@ -86,38 +106,36 @@ def compute_power_in_bhv_concat_td(td, freq_tresh=2, method="morlet", phase=True
     td["power"] = pd.Series([None] * len(td), dtype="object", index=td.index)
     td["phases"] = pd.Series([None] * len(td), dtype="object", index=td.index)
 
+    # only the columns this loop needs, and only trial rows to avoid iterrows()
+    trial_cols = td.loc[td.trial_name == "trial", ["bhv_concat", "concat_perturb_time"]]
+
+    n_total = len(trial_cols)
     n_skipped = 0
-    for idx, row in td.iterrows():
-        if row.trial_name != "trial":
-            continue
-        peak_freqs, freqs, psd = compute_peak_freq_pre_perturb(
-            row.bhv_concat, perturb_idx=row.concat_perturb_time
-        )
+    for idx, bhv_concat, perturb_idx in trial_cols.itertuples():
+        _, freqs, psd = compute_peak_freq_pre_perturb(bhv_concat, perturb_idx=perturb_idx)
         peak_mean_freq = freqs[np.argmax(psd.mean(-1), axis=0)]
         if peak_mean_freq < freq_tresh:
             n_skipped += 1
             continue
 
-        powers, phases = [], []
-        for i, peak_freq in enumerate(peak_freqs):
-            peak_freq = peak_mean_freq  # use shared freq across keypoints
-            if method == "morlet":
-                power = dsp.compute_morlet_power(
-                    row.bhv_concat[:, i], fs=100, freqs=peak_freq
-                )
-            _, instantaneous_phase = dsp.get_power_in_freq_range(
-                row.bhv_concat[:, i], 100, (peak_freq - 1, peak_freq + 1)
-            )
-            phases.append(instantaneous_phase)
-            powers.append(np.log10(np.squeeze(power)))
+        # every keypoint shares peak_mean_freq, so compute_morlet_power /
+        # get_power_phase_in_freq_range can run on all keypoints in one vectorised
+        # call (both already operate along axis=0 per column) instead of looping
+        if method == "morlet":
+            power = dsp.compute_morlet_power(bhv_concat, fs=100, freqs=peak_mean_freq)
+            td.at[idx, "power"] = np.log10(np.squeeze(power, axis=0))
 
-        phases = np.array(phases)
-        powers = np.array(powers)
         if phase:
-            td.at[idx, "phases"] = phases.T
-        td.at[idx, "power"] = powers.T
+            _, instantaneous_phase = dsp.get_power_phase_in_freq_range(
+                bhv_concat, 100, (peak_mean_freq - 1, peak_mean_freq + 1)
+            )
+            td.at[idx, "phases"] = instantaneous_phase
 
-    print(f"Skipped {n_skipped} trials")
+    n_passed = n_total - n_skipped
+    print(
+        f"{n_passed} / {n_total} trials pass the peak_mean_freq >= {freq_tresh} Hz gate "
+        f"({n_passed / n_total:.1%})"
+    )
     return td
 
 
@@ -139,7 +157,7 @@ def add_perturb_score_td(td):
         td.at[idx, "disturb_score"] = compute_perturb_score_row(
             row.power,
             row.concat_perturb_time,
-            start_idx=100,
+            start_idx=BASELINE_START_SAMPLES,
         )
     return td
 

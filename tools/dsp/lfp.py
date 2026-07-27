@@ -39,7 +39,7 @@ def compute_hilbert_power(x):
     return np.abs(analytic_signal) ** 2, instantaneous_phase
 
 
-def get_power_in_freq_range(data: np.array, fs: float, freqs: tuple, order: int = 4):
+def get_power_phase_in_freq_range(data: np.array, fs: float, freqs: tuple, order: int = 4):
     filtered_data = sos_bandpass_filter(data, fs, freqs, order)
     power, phase = compute_hilbert_power(filtered_data)
     return power, phase
