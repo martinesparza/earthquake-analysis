@@ -8,6 +8,7 @@ from scipy.ndimage import gaussian_filter1d
 from sklearn.decomposition import PCA
 
 from tools.dimensionality.pca import compute_pca
+from .params import Params
 
 
 def shift_time_no_wrap(arr, shift, fill_value=np.nan):
@@ -41,7 +42,9 @@ def shift_time_no_wrap(arr, shift, fill_value=np.nan):
 
 def add_concat_trial_start(td: pd.DataFrame):
     td = td.copy()
-    td["concat_trial_start"] = pd.Series([None] * len(td), dtype="object", index=td.index)
+    td["concat_trial_start"] = pd.Series(
+        [None] * len(td), dtype="object", index=td.index
+    )
 
     for pos, (idx, row) in enumerate(td.iterrows()):
         if row.trial_name != "trial":
@@ -52,7 +55,9 @@ def add_concat_trial_start(td: pd.DataFrame):
 
 def add_concat_perturb_time(td: pd.DataFrame):
     td = td.copy()
-    td["concat_perturb_time"] = pd.Series([None] * len(td), dtype="object", index=td.index)
+    td["concat_perturb_time"] = pd.Series(
+        [None] * len(td), dtype="object", index=td.index
+    )
 
     rows_to_drop = []
     for pos, (idx, row) in enumerate(td.iterrows()):
@@ -66,7 +71,9 @@ def add_concat_perturb_time(td: pd.DataFrame):
         ):
             rows_to_drop.append(idx)
             continue
-        td.at[idx, "concat_perturb_time"] = int(td.iloc[pos - 1].trial_length + sol_on)
+        td.at[idx, "concat_perturb_time"] = int(
+            td.iloc[pos - 1].trial_length + sol_on
+        )
 
     if rows_to_drop:
         print(
@@ -76,13 +83,17 @@ def add_concat_perturb_time(td: pd.DataFrame):
     return td
 
 
-def concat_previous_intertrial_signal(td, signal, features: np.ndarray | None = None):
+def concat_previous_intertrial_signal(
+    td, signal, features: np.ndarray | None = None
+):
     if features is None:
         features = np.arange(td[signal].values[0].shape[-1])
 
     td = td.copy()
     new_signal = signal + "_concat"
-    td[new_signal] = pd.Series([None] * len(td), dtype="object", index=td.index)
+    td[new_signal] = pd.Series(
+        [None] * len(td), dtype="object", index=td.index
+    )
 
     for pos in range(len(td)):
         row = td.iloc[pos]
@@ -91,7 +102,9 @@ def concat_previous_intertrial_signal(td, signal, features: np.ndarray | None = 
         prev_tf = td.iloc[pos - 1][signal][:, features]  # (T, n_features)
         curr_tf = td.iloc[pos][signal][:, features]  # (T, n_features)
 
-        td.at[td.index[pos], new_signal] = np.concatenate([prev_tf, curr_tf], axis=0)
+        td.at[td.index[pos], new_signal] = np.concatenate(
+            [prev_tf, curr_tf], axis=0
+        )
 
     return td
 
@@ -106,17 +119,23 @@ def balance_classes(df, label_field, random_state=42):
     labels = np.unique(df[label_field].values)
     subsets = []
     for label in labels:
-        subset = df[df[label_field] == label].sample(n=min_trials, random_state=random_state)
+        subset = df[df[label_field] == label].sample(
+            n=min_trials, random_state=random_state
+        )
         subsets.append(subset)
 
     # Concatenate and shuffle the result
     balanced_df = (
-        pd.concat(subsets).sample(frac=1, random_state=random_state).reset_index(drop=True)
+        pd.concat(subsets)
+        .sample(frac=1, random_state=random_state)
+        .reset_index(drop=True)
     )
     return balanced_df
 
 
-def remove_trials_wo_motion_before_event(df, motion_field, event_field, verbose=True):
+def remove_trials_wo_motion_before_event(
+    df, motion_field, event_field, verbose=True
+):
 
     if not isinstance(df, pd.DataFrame):
         raise TypeError("Input must be a pandas DataFrame.")
@@ -127,7 +146,9 @@ def remove_trials_wo_motion_before_event(df, motion_field, event_field, verbose=
     event_onset = df[event_field].iloc[0]
     initial_count = len(df)
 
-    filtered_df = df[df[motion_field].apply(lambda x: np.any(np.array(x) < event_onset))]
+    filtered_df = df[
+        df[motion_field].apply(lambda x: np.any(np.array(x) < event_onset))
+    ]
 
     dropped_count = initial_count - len(filtered_df)
     if verbose:
@@ -177,7 +198,9 @@ def _get_bhv_dims(df: pd.DataFrame, bhv: list):
 def reshape_to_trials(signal_1d, trial_length_samples):
     total_samples = len(signal_1d)
     if total_samples % trial_length_samples != 0:
-        raise ValueError("Total number of samples is not divisible by trial length.")
+        raise ValueError(
+            "Total number of samples is not divisible by trial length."
+        )
 
     n_trials = total_samples // trial_length_samples
     return signal_1d.reshape(n_trials, trial_length_samples)
@@ -185,7 +208,9 @@ def reshape_to_trials(signal_1d, trial_length_samples):
 
 def get_trial_x_time_per_neuron(df, area, neuron_id, trial_length=200):
     df_trials = pyal.select_trials(df, df.trial_name == "trial")
-    trials_arr = pyal.concat_trials(df_trials[:-1], f"{area}_spikes")[:, neuron_id]
+    trials_arr = pyal.concat_trials(df_trials[:-1], f"{area}_spikes")[
+        :, neuron_id
+    ]
 
     return reshape_to_trials(trials_arr, trial_length)
 
@@ -243,17 +268,33 @@ def get_data_array(
     # Definitions
     field = f"{area}_rates"
     target_ids = np.unique(data_list[0][trial_cat])
-    n_shared_trial = _find_number_shared_trial(data_list, target_ids, trial_cat, epoch)
-    n_timepoints = _find_number_timepoints(data_list[0], epoch=epoch, field=field)
+    n_shared_trial = _find_number_shared_trial(
+        data_list, target_ids, trial_cat, epoch
+    )
+    n_timepoints = _find_number_timepoints(
+        data_list[0], epoch=epoch, field=field
+    )
 
     # pre-allocating the data matrix
     AllData = np.empty(
-        (len(data_list), len(target_ids), n_shared_trial, n_timepoints, model.n_components)
+        (
+            len(data_list),
+            len(target_ids),
+            n_shared_trial,
+            n_timepoints,
+            model.n_components,
+        )
     )
     if bhv is not None:
         bhv_dims = _get_bhv_dims(data_list[0], bhv)
         AllBhv = np.empty(
-            (len(data_list), len(target_ids), n_shared_trial, n_timepoints, bhv_dims)
+            (
+                len(data_list),
+                len(target_ids),
+                n_shared_trial,
+                n_timepoints,
+                bhv_dims,
+            )
         )
 
     # Begin processing sessions
@@ -270,10 +311,16 @@ def get_data_array(
 
             # Normalise behaviour
             if norm_bhv:
-                df["bhv"] = [_smooth_data(bhv_arr, sigma=sigma) for bhv_arr in df["bhv"]]
+                df["bhv"] = [
+                    _smooth_data(bhv_arr, sigma=sigma) for bhv_arr in df["bhv"]
+                ]
 
         # Restrict to interval
-        df_ = pyal.restrict_to_interval(df, epoch_fun=epoch) if epoch is not None else df
+        df_ = (
+            pyal.restrict_to_interval(df, epoch_fun=epoch)
+            if epoch is not None
+            else df
+        )
 
         # Apply dim reduction
         if f"{area}_pca" not in df_.columns:
@@ -281,7 +328,9 @@ def get_data_array(
             if units is not None:
                 rates = rates[:, units[0] : units[1]]
             rates_model = model.fit(rates)
-            df_ = pyal.apply_dim_reduce_model(df_, rates_model, field, pca_field)
+            df_ = pyal.apply_dim_reduce_model(
+                df_, rates_model, field, pca_field
+            )
         else:
             pca_field = f"{area}_pca"
 
@@ -297,11 +346,15 @@ def get_data_array(
 
             # Convert lists to NumPy arrays for vectorised assignment
             trial_rates_array = np.stack(df__[pca_field].to_list(), axis=0)
-            AllData[session, targetIdx, : len(trial_rates_array), :, :] = trial_rates_array
+            AllData[session, targetIdx, : len(trial_rates_array), :, :] = (
+                trial_rates_array
+            )
 
             if bhv is not None:
                 trial_bhv_array = np.stack(df__["bhv"].to_list(), axis=0)
-                AllBhv[session, targetIdx, : len(trial_bhv_array), :, :] = trial_bhv_array
+                AllBhv[session, targetIdx, : len(trial_bhv_array), :, :] = (
+                    trial_bhv_array
+                )
 
     return AllData if bhv is None else (AllData, AllBhv)
 
@@ -311,8 +364,12 @@ def get_data_array(
 
 def add_pca_field(trial_data, signal, n_components):
     # pca_model = compute_pca(np.concatenate(trial_data[signal].iloc[1:].values), n_components)
-    pca_model = compute_pca(np.concatenate(trial_data[signal].values), n_components)
-    trial_data = pyal.apply_dim_reduce_model(trial_data, pca_model, signal, f"{signal}_pca")
+    pca_model = compute_pca(
+        np.concatenate(trial_data[signal].values), n_components
+    )
+    trial_data = pyal.apply_dim_reduce_model(
+        trial_data, pca_model, signal, f"{signal}_pca"
+    )
 
     return trial_data
 
@@ -326,7 +383,9 @@ def add_pca_df(
     if not isinstance(pca_fields, list):
         pca_fields = [pca_fields]
     if pca_fields == ["all"]:
-        pca_fields = [col for col in trial_data.columns if col.endswith("_rates")]
+        pca_fields = [
+            col for col in trial_data.columns if col.endswith("_rates")
+        ]
         try:
             pca_fields.remove("all_rates")
         except:
@@ -340,40 +399,17 @@ def add_pca_df(
 
 def add_bhv(trial_data, bhv_fields=["all"]):
     if bhv_fields[0] == "all":
-        bhv_fields = [
-            "left_ankle",
-            "left_ankle_angle",
-            "left_elbow",
-            "left_elbow_angle",
-            "left_foot",
-            "left_knee",
-            "left_knee_angle",
-            "left_paw",
-            "left_shoulder",
-            "left_wrist",
-            "left_wrist_angle",
-            "right_ankle",
-            "right_ankle_angle",
-            "right_elbow",
-            "right_elbow_angle",
-            "right_foot",
-            "right_knee",
-            "right_knee_angle",
-            "right_paw",
-            "right_shoulder",
-            "right_wrist",
-            "right_wrist_angle",
-            "shoulder_center",
-            "tail_base",
-            "tail_middle",
-            "tail_tip",
-        ]
+        bhv_fields = Params.keypoints
     trial_data = trial_data.copy()
     bhv_list = []
     for trial in range(len(trial_data)):
-        design_matrix = np.empty((trial_data["right_knee"].values[trial].shape[0], 0))
+        design_matrix = np.empty(
+            (trial_data["right_knee"].values[trial].shape[0], 0)
+        )
         for bhv in bhv_fields:
-            design_matrix = np.column_stack((design_matrix, trial_data[bhv].values[trial]))
+            design_matrix = np.column_stack(
+                (design_matrix, trial_data[bhv].values[trial])
+            )
         bhv_list.append(design_matrix)
     trial_data.loc[:, "bhv"] = bhv_list
     return trial_data
@@ -394,7 +430,9 @@ def add_history(data: np.ndarray, n_hist: int) -> np.ndarray:
     An array of _T_  x _(n x n_hist+1)_
 
     """
-    out = np.hstack([np.roll(data, shift, axis=0) for shift in range(n_hist + 1)])
+    out = np.hstack(
+        [np.roll(data, shift, axis=0) for shift in range(n_hist + 1)]
+    )
     out[:n_hist, data.shape[1] :] = 0
     return out
 
@@ -421,7 +459,9 @@ def add_history_to_data_array(allData, n_hist):
     for session, sessionData in enumerate(allData):
         for target, targetData in enumerate(sessionData):
             for trial, trialData in enumerate(targetData):
-                out[session, target, trial, :, :] = add_history(trialData, n_hist)
+                out[session, target, trial, :, :] = add_history(
+                    trialData, n_hist
+                )
     return out
 
 
@@ -431,14 +471,18 @@ def interpolate_nans(matrix):
     """
     if matrix.ndim == 1:
         # print(matrix)
-        interpolated_series = pd.Series(matrix).interpolate(limit_area="inside", limit=5)
+        interpolated_series = pd.Series(matrix).interpolate(
+            limit_area="inside", limit=5
+        )
         # print(interpolated_series.values)
         return interpolated_series.values
     else:
         interpolated_matrix = np.empty_like(matrix)
         for i in range(matrix.shape[1]):
             column = matrix[:, i]
-            interpolated_series = pd.Series(column).interpolate(limit_area="inside", limit=5)
+            interpolated_series = pd.Series(column).interpolate(
+                limit_area="inside", limit=5
+            )
             interpolated_matrix[:, i] = interpolated_series.values
         # print(interpolated_matrix)
         return interpolated_matrix
@@ -497,7 +541,9 @@ def get_data_array_and_pos(
         normalises based on 99th percentile for the magnitude of the movement
         """
         df = df.copy()
-        magnitude = np.percentile(np.abs(np.concatenate(df[field]).flatten()), 99)
+        magnitude = np.percentile(
+            np.abs(np.concatenate(df[field]).flatten()), 99
+        )
         df[field] = [pos / magnitude for pos in df[field]]
         return df
 
@@ -543,7 +589,9 @@ def get_data_array_and_pos(
     AllData = np.empty(
         (len(data_list), n_targets, n_shared_trial, n_timepoints, n_components)
     )
-    AllVel = np.empty((len(data_list), n_targets, n_shared_trial, n_timepoints, n_outputs))
+    AllVel = np.empty(
+        (len(data_list), n_targets, n_shared_trial, n_timepoints, n_outputs)
+    )
     rng = np.random.default_rng(12345)
 
     for target in target_ids:
@@ -571,7 +619,9 @@ def get_data_array_and_pos(
     AllData = np.empty(
         (len(data_list), n_targets, n_shared_trial, n_timepoints, n_components)
     )
-    AllVel = np.empty((len(data_list), n_targets, n_shared_trial, n_timepoints, n_outputs))
+    AllVel = np.empty(
+        (len(data_list), n_targets, n_shared_trial, n_timepoints, n_outputs)
+    )
     for session, df in enumerate(data_list):
         df_ = pyal.restrict_to_interval(df, epoch_fun=epoch)
         df_ = add_bhv(df_, bhv)

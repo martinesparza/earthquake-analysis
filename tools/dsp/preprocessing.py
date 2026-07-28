@@ -12,7 +12,9 @@ import tools.kinematics as kin
 
 
 # Define the function
-def _insert_nans_and_extend_to_spikes_shape_inplace(df, idx_col, value_col, ref_col):
+def _insert_nans_and_extend_to_spikes_shape_inplace(
+    df, idx_col, value_col, ref_col
+):
     new_rows = []
 
     for i, row in df.iterrows():
@@ -85,7 +87,9 @@ def preprocess(
             )
 
     time_signals = [
-        signal for signal in pyal.get_time_varying_fields(df) if "spikes" in signal
+        signal
+        for signal in pyal.get_time_varying_fields(df)
+        if "spikes" in signal
     ]
     print(time_signals)
 
@@ -115,16 +119,22 @@ def preprocess(
     # Transformation into firing rates
     df = pyal.add_firing_rates(df, "smooth", std=std)  # 0.05
     for signal in time_signals:
-        print(f"Resulting {signal} ephys data shape is (NxT): {df[signal][0].T.shape}")
+        print(
+            f"Resulting {signal} ephys data shape is (NxT): {df[signal][0].T.shape}"
+        )
 
     df["sol_level_id"] = [
         Params.sol_dir_to_level[dir_] if trial_name == "trial" else None
-        for dir_, trial_name in zip(df["values_Sol_direction"], df["trial_name"])
+        for dir_, trial_name in zip(
+            df["values_Sol_direction"], df["trial_name"]
+        )
     ]
 
     df["sol_contra_ipsi"] = [
         Params.sol_dir_to_contra_ipse[dir_] if trial_name == "trial" else None
-        for dir_, trial_name in zip(df["values_Sol_direction"], df["trial_name"])
+        for dir_, trial_name in zip(
+            df["values_Sol_direction"], df["trial_name"]
+        )
     ]
 
     return df
@@ -134,7 +144,7 @@ def load_and_process_session(
     session,
     data_dir="C:/data/raw/",
     bhv_fields="all",
-    oscillating_fields=Params.oscillating_key_points,
+    oscillating_fields=Params.oscillating_keypoints,
     min_immobile_bins=5,
     rates=True,
     std=0.05,
@@ -174,7 +184,10 @@ def load_and_process_session(
         df = dt.add_bhv(df, bhv_fields=bhv_fields)
         try:
             df = kin.compute_perturb_score(
-                df, oscillating_fields=oscillating_fields, feature_dims="z"
+                df,
+                bhv_fields=bhv_fields,
+                oscillating_fields=oscillating_fields,
+                feature_dims="z",
             )
         except Exception as e:
             print(
@@ -192,7 +205,9 @@ def load_and_process_session(
     del df
 
     if has_bhv:
-        df_tr = kin.drop_immobile_trials(df_tr, min_immobile_bins=min_immobile_bins)
+        df_tr = kin.drop_immobile_trials(
+            df_tr, min_immobile_bins=min_immobile_bins
+        )
         mask = df_tr["disturb_score"].apply(
             lambda x: isinstance(x, np.ndarray) and not np.any(np.isnan(x))
         )
