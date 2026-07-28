@@ -65,7 +65,9 @@ def starts_of_below_thresh_windows(arr, thresh: float, win: int):
         return np.flatnonzero(mask)
 
     # counts[j] = number of True values in mask[j:j+win]
-    counts = np.convolve(mask.astype(np.int32), np.ones(win, dtype=np.int32), mode="valid")
+    counts = np.convolve(
+        mask.astype(np.int32), np.ones(win, dtype=np.int32), mode="valid"
+    )
     return np.flatnonzero(counts == win)
 
 
@@ -187,7 +189,9 @@ def otsu_threshold(x, bins=256):
     return best_t
 
 
-def drop_immobile_trials(td, pre_perturb_window=(100, 200), min_immobile_bins=2, plot=False):
+def drop_immobile_trials(
+    td, pre_perturb_window=(100, 200), min_immobile_bins=5, plot=False
+):
     """
     Drop perturbation trials where the animal stopped running for at least
     `min_immobile_bins` consecutive samples anywhere in `pre_perturb_window`.

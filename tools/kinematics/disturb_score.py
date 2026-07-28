@@ -9,12 +9,15 @@ Pipeline (high-level entry point: compute_perturb_score):
   5. Baseline-subtract and integrate post-perturbation power → `disturb_score` (n_keypoints,)
 """
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import scipy
 
 import tools.dsp as dsp
 import tools.dataTools as dt
+from tools.params import Params
 
 # ---------------------------------------------------------------------------
 # Shared timing constants (10 ms bins / 100 Hz throughout)
@@ -133,9 +136,12 @@ def compute_power_in_bhv_concat_td(td, freq_tresh=2, method="morlet", phase=True
 
     n_passed = n_total - n_skipped
     print(
-        f"{n_passed} / {n_total} trials pass the peak_mean_freq >= {freq_tresh} Hz gate "
-        f"({n_passed / n_total:.1%})"
+        f"compute_power_in_bhv_concat_td: dropping {n_skipped} trial(s) with peak_mean_freq < 2 Hz"
     )
+    # print(
+    #     f"{n_passed} / {n_total} trials pass the peak_mean_freq >= {freq_tresh} Hz gate "
+    #     f"({n_passed / n_total:.1%})"
+    # )
     return td
 
 
@@ -167,7 +173,7 @@ def add_perturb_score_td(td):
 # ---------------------------------------------------------------------------
 
 
-def compute_perturb_score(df, bhv_fields, feature_dims=None):
+def compute_perturb_score(df, feature_dims="z"):
     """
     Full pipeline to build bhv_concat and compute the per-trial disturbance score.
 

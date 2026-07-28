@@ -133,7 +133,8 @@ def preprocess(
 def load_and_process_session(
     session,
     data_dir="C:/data/raw/",
-    bhv_fields=None,
+    bhv_fields="all",
+    oscillating_fields=Params.oscillating_key_points,
     min_immobile_bins=5,
     rates=True,
     std=0.05,
@@ -152,35 +153,45 @@ def load_and_process_session(
     df_tr      : pd.DataFrame  filtered, annotated trial table
     dstrb_idx  : np.ndarray    indices that sort df_tr ascending by disturbance
     """
-    if bhv_fields is None:
-        bhv_fields = Params.oscillating_key_points
 
     # 1 & 2 — load + preprocess
+    print(f"\n##### Loading and preprocessing ######")
     df = pyal.load_pyaldata(data_dir + session[:4] + "/" + session)
     df = preprocess(df, only_trials=False, combine_time_bins=False, std=std)
 
     # 3 — PCA excluding the first row (free locomotion period)
+    print(f"\n##### Running PCA ######")
     if rates:
         df = dt.add_pca_df(df.iloc[1:])
     else:  # spikes
         spike_fields = [col for col in df.columns if col.endswith("_spikes")]
         df = dt.add_pca_df(df.iloc[1:], pca_fields=spike_fields)
+
     # 4 — perturbation metric (requires behavioural data; skip gracefully if absent)
-    has_perturbation_metric = True
-    if has_perturbation_metric:
+    print(f"\n##### Calculating perturbation metric ######")
+    has_bhv = True
+    try:
+        df = dt.add_bhv(df, bhv_fields=bhv_fields)
         try:
-            df = kin.compute_perturb_score(df, bhv_fields=bhv_fields)
+            df = kin.compute_perturb_score(
+                df, oscillating_fields=oscillating_fields, feature_dims="z"
+            )
         except Exception as e:
             print(
                 f"  WARNING: compute_perturb_score failed ({e}). "
                 f"Skipping disturbance metric and trial dropping."
             )
-            has_perturbation_metric = False
+            has_bhv = False
+    except Exception as e:
+        print(f"    WARNING: could not add behaviour ({e})")
+        has_bhv = False
 
     # 5 — filter trials
+    print(f"\n##### Filtering trials ######")
     df_tr = pyal.select_trials(df, df.trial_name == "trial")
+    del df
 
-    if has_perturbation_metric:
+    if has_bhv:
         df_tr = kin.drop_immobile_trials(df_tr, min_immobile_bins=min_immobile_bins)
         mask = df_tr["disturb_score"].apply(
             lambda x: isinstance(x, np.ndarray) and not np.any(np.isnan(x))
