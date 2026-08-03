@@ -34,6 +34,9 @@ dependencies = [
     "scikit-learn>=1.9.0,<2",
     "pyaldata",
     "jupyterlab>=4.6.0,<5",
+    "seaborn>=0.13.2",
+    "hmmlearn>=0.3.3",
+    "ipympl>=0.10.0",
 ]
 
 [tool.uv]

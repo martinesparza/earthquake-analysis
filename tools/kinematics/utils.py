@@ -71,7 +71,9 @@ def starts_of_below_thresh_windows(arr, thresh: float, win: int):
     return np.flatnonzero(counts == win)
 
 
-def immobile_starts_before_event(bhv_arr, thresh, event_onset=(100, 200), win=50) -> bool:
+def immobile_starts_before_event(
+    bhv_arr, thresh, event_onset=(100, 200), win=50
+) -> bool:
     """Detects if the animal is immobile in a give index window (before the perturbation)
 
     Parameters
@@ -93,8 +95,12 @@ def immobile_starts_before_event(bhv_arr, thresh, event_onset=(100, 200), win=50
     vel = np.gradient(bhv_arr, axis=0)
     speed = np.linalg.norm(vel, axis=1)
 
-    immobile_starts = starts_of_below_thresh_windows(speed, thresh, win)  # indices
-    return np.any((immobile_starts > event_onset[0]) & (immobile_starts < event_onset[1]))
+    immobile_starts = starts_of_below_thresh_windows(
+        speed, thresh, win
+    )  # indices
+    return np.any(
+        (immobile_starts > event_onset[0]) & (immobile_starts < event_onset[1])
+    )
 
 
 def valley_between_means(x, mu1, mu2, bins=300, smooth_win=31, poly=3):
@@ -190,7 +196,11 @@ def otsu_threshold(x, bins=256):
 
 
 def drop_immobile_trials(
-    td, pre_perturb_window=(100, 200), min_immobile_bins=5, plot=False
+    td,
+    pre_perturb_window=(100, 200),
+    min_immobile_bins=5,
+    plot=False,
+    return_dropped_count=False,
 ):
     """
     Drop perturbation trials where the animal stopped running for at least
@@ -244,7 +254,10 @@ def drop_immobile_trials(
     filtered_df = td[
         td["bhv"].apply(
             lambda arr: not immobile_starts_before_event(
-                arr, thresh=thresh, event_onset=pre_perturb_window, win=min_immobile_bins
+                arr,
+                thresh=thresh,
+                event_onset=pre_perturb_window,
+                win=min_immobile_bins,
             )
         )
     ]
@@ -252,10 +265,15 @@ def drop_immobile_trials(
     print(
         f"Dropped {dropped_count} of {initial_count} rows ({dropped_count/initial_count:.2%})."
     )
-    return filtered_df
+    if return_dropped_count:
+        return filtered_df, dropped_count
+    else:
+        return filtered_df
 
 
-def drop_immobile_trials_from_td(td, event_onset=(100, 200), win=50, p=5, plot=False):
+def drop_immobile_trials_from_td(
+    td, event_onset=(100, 200), win=50, p=5, plot=False
+):
     initial_count = len(td)
 
     thresh = compute_immobile_thresh(td, p=p, plot=plot)

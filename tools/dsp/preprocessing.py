@@ -181,22 +181,17 @@ def load_and_process_session(
     print(f"\n##### Calculating perturbation metric ######")
     has_bhv = True
     try:
-        df = dt.add_bhv(df, bhv_fields=bhv_fields)
-        try:
-            df = kin.compute_perturb_score(
-                df,
-                bhv_fields=bhv_fields,
-                oscillating_fields=oscillating_fields,
-                feature_dims="z",
-            )
-        except Exception as e:
-            print(
-                f"  WARNING: compute_perturb_score failed ({e}). "
-                f"Skipping disturbance metric and trial dropping."
-            )
-            has_bhv = False
+        df = kin.compute_perturb_score(
+            df,
+            bhv_fields=bhv_fields,
+            oscillating_fields=oscillating_fields,
+            feature_dims="z",
+        )
     except Exception as e:
-        print(f"    WARNING: could not add behaviour ({e})")
+        print(
+            f"  WARNING: compute_perturb_score failed ({e}). "
+            f"Skipping disturbance metric and trial dropping."
+        )
         has_bhv = False
 
     # 5 — filter trials

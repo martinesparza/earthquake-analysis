@@ -411,7 +411,12 @@ def add_bhv(trial_data, bhv_fields=["all"]):
                 (design_matrix, trial_data[bhv].values[trial])
             )
         bhv_list.append(design_matrix)
-    trial_data.loc[:, "bhv"] = bhv_list
+    try:
+        trial_data.loc[:, "bhv"] = bhv_list
+    except:
+        print(f"bhv field already present, overwriting it")
+        trial_data.drop(columns=["bhv"], inplace=True)
+        trial_data.loc[:, "bhv"] = bhv_list
     return trial_data
 
 

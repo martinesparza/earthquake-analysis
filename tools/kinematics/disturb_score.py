@@ -250,7 +250,8 @@ def get_keypoint_dim_indices(df, keypoints, dim="z"):
 def compute_perturb_score(
     df,
     on_keypoints=Params.oscillating_keypoints,
-    feature_dims="y",
+    feature_dims="z",
+    drop_trials=True,
 ):
     """
     Full pipeline to build bhv_concat and compute the per-trial disturbance score.
@@ -301,4 +302,7 @@ def compute_perturb_score(
     df = dt.add_concat_trial_start(df)
     df = compute_power_in_bhv_concat_td(df)
     df = add_perturb_score_td(df)
+    if drop_trials:
+        df = df[df["power"].apply(lambda x: isinstance(x, np.ndarray))]
+
     return df
