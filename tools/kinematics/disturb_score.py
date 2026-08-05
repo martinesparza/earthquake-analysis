@@ -170,14 +170,14 @@ def add_perturb_score_td(td):
         Baseline-subtracted integral of log-power post-perturbation.
     """
     td = td.copy()
-    td["disturb_score"] = pd.Series(
+    td["perturb_score"] = pd.Series(
         [None] * len(td), dtype="object", index=td.index
     )
 
     for idx, row in td.iterrows():
         if not isinstance(row.power, np.ndarray):
             continue
-        td.at[idx, "disturb_score"] = compute_perturb_score_row(
+        td.at[idx, "perturb_score"] = compute_perturb_score_row(
             row.power,
             row.concat_perturb_time,
             start_idx=BASELINE_START_SAMPLES,
@@ -290,8 +290,8 @@ def compute_perturb_score(
                   phases, disturb_score
     """
     if "bhv" not in df.columns:
-        print("bhv column not found adding it")
-        df = dt.add_bhv(df, bhv_fields=["all"])
+        print("bhv column not found, adding it")
+        df = dt.add_bhv(df, bhv_fields=Params.oscillating_keypoints)
 
     if isinstance(feature_dims, str):
         feature_dims = get_keypoint_dim_indices(

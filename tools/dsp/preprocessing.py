@@ -140,28 +140,44 @@ def preprocess(
     return df
 
 
-def load_and_process_session(
+def load_and_preprocess_trials_from_sess(
     session,
     data_dir="C:/data/raw/",
-    bhv_fields="all",
-    oscillating_fields=Params.oscillating_keypoints,
-    min_immobile_bins=5,
-    rates=True,
+    bhv_fields=Params.oscillating_keypoints,
     std=0.05,
+    run_pca=True,
+    rates=True,
+    exclude_first_free_from_pca=True,
+    cv_thresh=0.225,
 ):
     """
-    Full pipeline for a session:
+    Full pipeline for a session (drop-before-compute ordering):
       1. Load raw pyalData
       2. Preprocess (remove low-firing neurons, keep 10 ms bins)
-      3. Fit PCA on all rows except the first (free locomotion period)
-      4. Compute perturbation metric (bhv_concat, Morlet power, disturb_score)
-      5. Filter to perturbation trials, drop immobile, drop NaN scores
-      6. Add disturb_mean / disturb_sum and sort by disturbance
+      3. Fit PCA on all rows except the first (free locomotion period); this
+         also drops that first row from `df` for every step below
+      4. Drop unsteady 'trial' rows (immobile or high-CV pre-perturbation
+         running, via `kin.drop_unsteady_running_trials`) *before* computing
+         the perturbation metric, so the Welch/Morlet power estimate isn't
+         contaminated by unsteady running. Only runs if behavioural columns
+         are present (checked via `"shoulder_center" in df.columns`);
+         `intertrial`/`free` rows are left untouched.
+      5. Compute the perturbation metric on the reduced table
+         (`kin.compute_perturb_score` -> `power`, `phases`, `perturb_score`
+         per trial); skipped, with a warning, if it raises or if no
+         behavioural columns were found in step 4.
+      6. Add `perturb_score_mean` / `perturb_score_log_sum` summary columns.
+
+    Unlike `load_and_process_session`, this does not restrict the returned
+    table to `trial_name == 'trial'` or sort by disturbance -- it returns the
+    full table (all trial types, minus dropped unsteady trials) with the
+    added perturbation-score columns.
 
     Returns
     -------
-    df_tr      : pd.DataFrame  filtered, annotated trial table
-    dstrb_idx  : np.ndarray    indices that sort df_tr ascending by disturbance
+    df : pd.DataFrame  session table with PCA-reduced rates, unsteady trials
+         dropped, and perturb_score / perturb_score_mean / perturb_score_log_sum
+         columns added.
     """
 
     # 1 & 2 — load + preprocess
@@ -169,59 +185,54 @@ def load_and_process_session(
     df = pyal.load_pyaldata(data_dir + session[:4] + "/" + session)
     df = preprocess(df, only_trials=False, combine_time_bins=False, std=std)
 
-    # 3 — PCA excluding the first row (free locomotion period)
-    print(f"\n##### Running PCA ######")
-    if rates:
-        df = dt.add_pca_df(df.iloc[1:])
-    else:  # spikes
-        spike_fields = [col for col in df.columns if col.endswith("_spikes")]
-        df = dt.add_pca_df(df.iloc[1:], pca_fields=spike_fields)
+    # 3 — pca excluding the first row (free locomotion period)
+    if run_pca:
+        print(f"\n##### Running PCA ######")
+        if rates:
+            if exclude_first_free_from_pca:
+                df = dt.add_pca_df(df.iloc[1:])
+            else:
+                df = dt.add_pca_df(df)
+        else:  # spikes
+            spike_fields = [
+                col for col in df.columns if col.endswith("_spikes")
+            ]
+            if exclude_first_free_from_pca:
+                df = dt.add_pca_df(df.iloc[1:], pca_fields=spike_fields)
+            else:
+                df = dt.add_pca_df(df, pca_fields=spike_fields)
 
-    # 4 — perturbation metric (requires behavioural data; skip gracefully if absent)
-    print(f"\n##### Calculating perturbation metric ######")
-    has_bhv = True
-    try:
-        df = kin.compute_perturb_score(
-            df,
-            bhv_fields=bhv_fields,
-            oscillating_fields=oscillating_fields,
-            feature_dims="z",
-        )
-    except Exception as e:
-        print(
-            f"  WARNING: compute_perturb_score failed ({e}). "
-            f"Skipping disturbance metric and trial dropping."
-        )
-        has_bhv = False
-
-    # 5 — filter trials
-    print(f"\n##### Filtering trials ######")
-    df_tr = pyal.select_trials(df, df.trial_name == "trial")
-    del df
-
-    if has_bhv:
-        df_tr = kin.drop_immobile_trials(
-            df_tr, min_immobile_bins=min_immobile_bins
-        )
-        mask = df_tr["disturb_score"].apply(
-            lambda x: isinstance(x, np.ndarray) and not np.any(np.isnan(x))
-        )
-        df_tr = df_tr.loc[mask]
-
-        # 6 — derived metrics + sort order
-        df_tr["disturb_mean"] = df_tr["disturb_score"].apply(np.mean)
-        df_tr["disturb_sum"] = df_tr["disturb_score"].apply(
-            lambda a: np.log10(np.abs(np.sum(a)))
-        )
-        disturbances = np.sum(np.stack(df_tr.disturb_score.values), axis=1)
-        dstrb_idx = np.argsort(disturbances)
+    # 3 - drop immobile trials
+    has_bhv = False
+    if "shoulder_center" in df.columns:
+        has_bhv = True
+        df = kin.drop_unsteady_running_trials(df, cv_thresh=cv_thresh)
     else:
-        dstrb_idx = np.arange(len(df_tr))
+        print(f"No behaviour found")
 
-    return df_tr, dstrb_idx
+    # 4 — perturbation metric (requires behavioural data; skips if absent)
+    if has_bhv:
+        print(f"\n##### Calculating perturbation metric ######")
+        try:
+            df = kin.compute_perturb_score(
+                df,
+                on_keypoints=bhv_fields,
+                feature_dims="z",
+            )
+        except Exception as e:
+            print(
+                f"  WARNING: compute_perturb_score failed ({e}). "
+                f"Skipping disturbance metric and trial dropping."
+            )
+
+    df["perturb_score_mean"] = df["perturb_score"].apply(np.mean)
+    df["perturb_score_log_sum"] = df["perturb_score"].apply(
+        lambda a: np.log10(np.abs(np.sum(a)))
+    )
+    return df
 
 
-def drop_unperturbed_trials(
+def _drop_unperturbed_trials(
     df_tr: pd.DataFrame, dstrb_idx: np.ndarray, thresh_val: float = -2.0
 ) -> pd.DataFrame:
     """
@@ -260,29 +271,44 @@ def drop_unperturbed_trials(
     return df_tr.iloc[np.where(mask)[0]]
 
 
-def drop_trials_sem_crosses_zero(
-    df_tr: pd.DataFrame,
+def drop_unperturbed_or_stopped_trials(
+    trial_td: pd.DataFrame,
     thresh_val: float = -2,
-    field_sem="disturb_score",
-    field_val="disturb_mean",
-    std=False,
+    field_sem="perturb_score",
+    field_val="perturb_score_mean",
+    stat="sem",
 ) -> pd.DataFrame:
     """
-    Drop trials whose per-trial SEM (across keypoints) does not push the
-    disturbance mean below zero, and optionally remove extreme outliers.
+    Drop trials that don't show a genuine perturbation response: either
+    'unperturbed' (no confident post-perturbation power decrease) or
+    'stopped' (an extreme power drop consistent with the animal halting
+    outright, rather than a graded gait disruption).
 
-    For each trial, disturb_score is a (n_keypoints,) array.  We compute:
-        mean = disturb_score.mean()
-        sem  = disturb_score.std() / sqrt(n_keypoints)
+    For each trial, `field_sem` (`perturb_score`) is a (n_keypoints,) array.
+    We compute:
+        mean = perturb_score.mean()
+        sem  = perturb_score.std() / sqrt(n_keypoints)   (or std, via `stat`)
 
     A trial is kept only when BOTH:
-      - mean + sem < 0   (±1 SEM interval lies entirely below zero)
-      - disturb_mean > thresh_val  (hard lower bound to remove outliers)
+      - mean + sem < 0                    ('unperturbed' check -- the
+                                             ±1 SEM/STD interval lies entirely
+                                             below zero, so the power drop
+                                             isn't just noise)
+      - perturb_score_mean > thresh_val   ('stopped' check -- a hard lower
+                                             bound excluding extreme outliers
+                                             more likely caused by the animal
+                                             stopping outright than by a
+                                             modulated gait response)
 
     Parameters
     ----------
-    df_tr      : pd.DataFrame  trial table with a 'disturb_score' column.
-    thresh_val : float         hard lower bound on disturb_mean (default -2.0).
+    trial_td   : pd.DataFrame  trial table with `field_sem` / `field_val`
+                 columns (defaults: 'perturb_score', 'perturb_score_mean').
+    thresh_val : float          hard lower bound on `field_val` (default -2).
+    field_sem  : str            per-keypoint array column used for the
+                 SEM/STD check.
+    field_val  : str            scalar column used for the hard-floor check.
+    stat       : "sem" | "std"  which statistic pushes the mean below zero.
 
     Returns
     -------
@@ -301,20 +327,25 @@ def drop_trials_sem_crosses_zero(
             return False
         return (arr.mean() + arr.std()) < 0
 
-    if not std:
-        by_sem = df_tr[field_sem].apply(_sem_crosses)
+    if stat == "sem":
+        by_sem = trial_td[field_sem].apply(_sem_crosses)
+    elif stat == "std":
+        by_sem = trial_td[field_sem].apply(_std_crosses)
     else:
-        by_sem = df_tr[field_sem].apply(_std_crosses)
-    by_value = df_tr[field_val] > thresh_val
+        raise ValueError(
+            "Please use either 'sem' or 'std' as dropping statistics"
+        )
+
+    by_value = trial_td[field_val] > thresh_val
     mask = by_sem & by_value
 
-    n_total = len(df_tr)
+    n_total = len(trial_td)
     print(
-        f"  drop_trials_sem_crosses_zero: "
-        f"by SEM: {by_sem.sum()}  |  by value: {by_value.sum()}  |  "
+        f"  drop_unperturbed_trials: "
+        f"dropped by {stat}: {(~by_sem).sum()}  |  dropped by value: {(~by_value).sum()}  |  "
         f"kept: {mask.sum()}/{n_total} ({100*mask.sum()/n_total:.1f}%)"
     )
-    return df_tr.loc[mask]
+    return trial_td.loc[mask]
 
 
 def load_sessions_for_trial_analyses(
