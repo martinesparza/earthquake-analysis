@@ -73,7 +73,7 @@ class Params:
         10: 90,
     }
 
-    oscillating_key_points = [
+    oscillating_keypoints = [
         "left_ankle",
         "left_elbow",
         "left_foot",
@@ -88,6 +88,34 @@ class Params:
         "right_wrist",
     ]
     areas = ["MOp", "SSp", "CP", "VAL"]
+    keypoints = [
+        "left_ankle",
+        "left_ankle_angle",
+        "left_elbow",
+        "left_elbow_angle",
+        "left_foot",
+        "left_knee",
+        "left_knee_angle",
+        "left_paw",
+        "left_shoulder",
+        "left_wrist",
+        "left_wrist_angle",
+        "right_ankle",
+        "right_ankle_angle",
+        "right_elbow",
+        "right_elbow_angle",
+        "right_foot",
+        "right_knee",
+        "right_knee_angle",
+        "right_paw",
+        "right_shoulder",
+        "right_wrist",
+        "right_wrist_angle",
+        "shoulder_center",
+        "tail_base",
+        "tail_middle",
+        "tail_tip",
+    ]
 
 
 @dataclass

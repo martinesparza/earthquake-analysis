@@ -9,6 +9,11 @@ from scipy.signal import savgol_filter
 from scipy.stats import skew
 from sklearn.mixture import GaussianMixture
 
+import pyaldata as pyal
+
+import tools.dataTools as dt
+from tools.params import Params
+
 
 def assess_bimodality(x, n_init=5, random_state=0):
     g = GaussianMixture(
@@ -65,11 +70,15 @@ def starts_of_below_thresh_windows(arr, thresh: float, win: int):
         return np.flatnonzero(mask)
 
     # counts[j] = number of True values in mask[j:j+win]
-    counts = np.convolve(mask.astype(np.int32), np.ones(win, dtype=np.int32), mode="valid")
+    counts = np.convolve(
+        mask.astype(np.int32), np.ones(win, dtype=np.int32), mode="valid"
+    )
     return np.flatnonzero(counts == win)
 
 
-def immobile_starts_before_event(bhv_arr, thresh, event_onset=(100, 200), win=50) -> bool:
+def immobile_starts_before_event(
+    bhv_arr, thresh, event_onset=(100, 200), win=50
+) -> bool:
     """Detects if the animal is immobile in a give index window (before the perturbation)
 
     Parameters
@@ -91,8 +100,12 @@ def immobile_starts_before_event(bhv_arr, thresh, event_onset=(100, 200), win=50
     vel = np.gradient(bhv_arr, axis=0)
     speed = np.linalg.norm(vel, axis=1)
 
-    immobile_starts = starts_of_below_thresh_windows(speed, thresh, win)  # indices
-    return np.any((immobile_starts > event_onset[0]) & (immobile_starts < event_onset[1]))
+    immobile_starts = starts_of_below_thresh_windows(
+        speed, thresh, win
+    )  # indices
+    return np.any(
+        (immobile_starts > event_onset[0]) & (immobile_starts < event_onset[1])
+    )
 
 
 def valley_between_means(x, mu1, mu2, bins=300, smooth_win=31, poly=3):
@@ -187,7 +200,65 @@ def otsu_threshold(x, bins=256):
     return best_t
 
 
-def drop_immobile_trials(td, pre_perturb_window=(100, 200), min_immobile_bins=2, plot=False):
+def compute_otsu_thresh_td(td):
+    vel = np.gradient(np.concatenate(td.bhv.values), axis=0)
+    speed = np.linalg.norm(vel, axis=1)
+    log_speed = np.log(np.maximum(speed, 1e-10))
+
+    # Otsu threshold in log-space → convert back
+    thresh_log = otsu_threshold(log_speed)
+    thresh = np.exp(thresh_log)
+    print(f"otsu immobility threshold: {thresh:.4f}")
+    return thresh
+
+
+def drop_unsteady_running_trials(
+    td,
+    pre_perturb_win=(100, 200),
+    cv_thresh=0.2,
+):
+    """Drop 'trial' rows with unsteady running (immobile or high-CV) in
+    `pre_perturb_win`. 'intertrial'/'free' rows always pass through untouched,
+    so callers that need positional adjacency to the preceding intertrial
+    segment (e.g. compute_perturb_score's concat step) keep a structurally
+    intact td.
+    """
+    if "bhv" not in td.columns:
+        print("bhv column not found, adding it")
+        td = dt.add_bhv(td, bhv_fields=Params.oscillating_keypoints)
+
+    is_trial = (td.trial_name == "trial").to_numpy()
+    trial_td = td[is_trial]
+    otsu_thresh = compute_otsu_thresh_td(trial_td)
+
+    keep = np.ones(len(td), dtype=bool)
+    for pos, row in zip(np.flatnonzero(is_trial), trial_td.itertuples()):
+        vel = np.gradient(row.bhv, axis=0)
+        speed = np.linalg.norm(vel, axis=1)[
+            pre_perturb_win[0] : pre_perturb_win[1]
+        ]
+        mean_speed = speed.mean()
+        cv = speed.std() / mean_speed
+        keep[pos] = (mean_speed > otsu_thresh) and (cv <= cv_thresh)
+
+    n_dropped = is_trial.sum() - keep[is_trial].sum()
+    print(
+        f"drop_unsteady_running_trials: dropping {n_dropped} of {is_trial.sum()} trials ({n_dropped / is_trial.sum():.1%})"
+    )
+
+    return td[keep]
+
+
+#################  ↓ ↓ ↓ ↓ DEPRECATED  ↓ ↓ ↓ ↓ ↓ ###################
+
+
+def _drop_immobile_trials(
+    td,
+    pre_perturb_window=(100, 200),
+    min_immobile_bins=5,
+    plot=False,
+    return_dropped_count=False,
+):
     """
     Drop perturbation trials where the animal stopped running for at least
     `min_immobile_bins` consecutive samples anywhere in `pre_perturb_window`.
@@ -240,7 +311,10 @@ def drop_immobile_trials(td, pre_perturb_window=(100, 200), min_immobile_bins=2,
     filtered_df = td[
         td["bhv"].apply(
             lambda arr: not immobile_starts_before_event(
-                arr, thresh=thresh, event_onset=pre_perturb_window, win=min_immobile_bins
+                arr,
+                thresh=thresh,
+                event_onset=pre_perturb_window,
+                win=min_immobile_bins,
             )
         )
     ]
@@ -248,10 +322,15 @@ def drop_immobile_trials(td, pre_perturb_window=(100, 200), min_immobile_bins=2,
     print(
         f"Dropped {dropped_count} of {initial_count} rows ({dropped_count/initial_count:.2%})."
     )
-    return filtered_df
+    if return_dropped_count:
+        return filtered_df, dropped_count
+    else:
+        return filtered_df
 
 
-def drop_immobile_trials_from_td(td, event_onset=(100, 200), win=50, p=5, plot=False):
+def drop_immobile_trials_from_td(
+    td, event_onset=(100, 200), win=50, p=5, plot=False
+):
     initial_count = len(td)
 
     thresh = compute_immobile_thresh(td, p=p, plot=plot)
