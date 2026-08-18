@@ -166,6 +166,7 @@ cython_debug/
 
 #results
 results/
+across-sessions/*/data
 
 #github
 .github/

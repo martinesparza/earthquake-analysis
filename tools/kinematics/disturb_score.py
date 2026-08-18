@@ -227,7 +227,7 @@ def get_keypoint_dim_indices(df, keypoints, dim="z"):
         )
     dim_col = _DIM_TO_COL[dim]
 
-    missing = [f for f in keypoints if f not in Params.keypoints]
+    missing = [f for f in keypoints if f not in Params.all_keypoints]
     if missing:
         warnings.warn(
             f"oscillating field(s) not found in bhv_fields, skipping: {missing}"

@@ -203,6 +203,7 @@ def load_and_preprocess_trials_from_sess(
                 df = dt.add_pca_df(df, pca_fields=spike_fields)
 
     # 3 - drop immobile trials
+    print(f"\n##### Dropping unsteady running trials ######")
     has_bhv = False
     if "shoulder_center" in df.columns:
         has_bhv = True
@@ -277,6 +278,7 @@ def drop_unperturbed_or_stopped_trials(
     field_sem="perturb_score",
     field_val="perturb_score_mean",
     stat="sem",
+    return_count=False,
 ) -> pd.DataFrame:
     """
     Drop trials that don't show a genuine perturbation response: either
@@ -345,6 +347,8 @@ def drop_unperturbed_or_stopped_trials(
         f"dropped by {stat}: {(~by_sem).sum()}  |  dropped by value: {(~by_value).sum()}  |  "
         f"kept: {mask.sum()}/{n_total} ({100*mask.sum()/n_total:.1f}%)"
     )
+    if return_count:
+        return trial_td.loc[mask], by_sem, by_value
     return trial_td.loc[mask]
 
 

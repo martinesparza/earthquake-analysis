@@ -5,7 +5,7 @@ Module for Reduced Rank Regression utilities
 import warnings
 from typing import Tuple
 
-import cupy as cp
+# import cupy as cp
 import numpy as np
 import pyaldata as pyal
 from scipy import sparse
@@ -19,7 +19,9 @@ from tools.dimensionality.cca import _roll_array
 from tools.params import Params
 
 
-def _get_data_for_rrr(df, area, condition, n_components=20, epoch=None, free_period=0):
+def _get_data_for_rrr(
+    df, area, condition, n_components=20, epoch=None, free_period=0
+):
     """Returns
 
     Args:
@@ -75,7 +77,9 @@ def compute_rrr_on_df(
             n_components=n_components,
             free_period=free_period,
         )
-        rnd_timepoints = np.random.choice(X.shape[0], size=timepoints, replace=False)
+        rnd_timepoints = np.random.choice(
+            X.shape[0], size=timepoints, replace=False
+        )
 
         for area_y in areas:
             Y = _get_data_for_rrr(
@@ -97,16 +101,23 @@ def compute_rrr_on_df(
 
             for train_index, test_index in kf.split(X_subsampled):
 
-                X_train, X_test = X_subsampled[train_index], X_subsampled[test_index]
+                X_train, X_test = (
+                    X_subsampled[train_index],
+                    X_subsampled[test_index],
+                )
                 Y_train, Y_test = Y[train_index], Y[test_index]
 
                 # Fit model
-                model = ReducedRankRegression(r=10, lam=0.05, use_sklearn=False)
+                model = ReducedRankRegression(
+                    r=10, lam=0.05, use_sklearn=False
+                )
                 model.fit(X=X_train, Y=Y_train)
 
                 # Predict
                 Y_pred_test = model.predict(X_test)
-                multi_r2, col_r2 = decutils.multivariate_r2(Y_test, Y_pred_test)
+                multi_r2, col_r2 = decutils.multivariate_r2(
+                    Y_test, Y_pred_test
+                )
                 # print(f"{area_x} to {area_y}: {multi_r2:.3f}")
                 r2.append(multi_r2)
             if verbose:
@@ -179,7 +190,9 @@ def delayed_rrr_on_df(
             for shift in shifts:
 
                 # Introduce delay
-                Y_delayed = _roll_array(Y, shift=int(shift / (bin_size * 1000)))
+                Y_delayed = _roll_array(
+                    Y, shift=int(shift / (bin_size * 1000))
+                )
 
                 # Initialize R2
                 weighted_r2s = []
@@ -190,10 +203,15 @@ def delayed_rrr_on_df(
                 for train_index, test_index in kf.split(X):
 
                     X_train, X_test = X[train_index], X[test_index]
-                    Y_train, Y_test = Y_delayed[train_index], Y_delayed[test_index]
+                    Y_train, Y_test = (
+                        Y_delayed[train_index],
+                        Y_delayed[test_index],
+                    )
 
                     # Fit model
-                    model = ReducedRankRegression(r=rank, lam=lambda_, use_sklearn=False)
+                    model = ReducedRankRegression(
+                        r=rank, lam=lambda_, use_sklearn=False
+                    )
                     model.fit(X=X_train, Y=Y_train)
 
                     # Predict
@@ -202,7 +220,9 @@ def delayed_rrr_on_df(
                         Y_test, Y_pred_test, explained_variance_ratios
                     )
                     col_r2 = decutils.columnwise_r2(Y_test, Y_pred_test)
-                    col_custom_r2 = decutils.custom_r2_func(Y_test, Y_pred_test)
+                    col_custom_r2 = decutils.custom_r2_func(
+                        Y_test, Y_pred_test
+                    )
                     vae_custom_r2 = decutils.custom_r2_func(
                         Y_test, Y_pred_test, multioutput="variance_weighted"
                     )
@@ -213,12 +233,18 @@ def delayed_rrr_on_df(
                     vae_custom_r2s.append(vae_custom_r2)
 
                 if verbose:
-                    print(f"{area_x} to {area_y}: {np.array(col_custom_r2[0]).mean():.3f}")
+                    print(
+                        f"{area_x} to {area_y}: {np.array(col_custom_r2[0]).mean():.3f}"
+                    )
 
                 results_rrr[area_x][area_y]["pc1_r2"][shift] = pc1_r2s
                 results_rrr[area_x][area_y]["vae_r2"][shift] = weighted_r2s
-                results_rrr[area_x][area_y]["pc1_custom_r2"][shift] = pc2_custom_r2s
-                results_rrr[area_x][area_y]["vae_custom_r2"][shift] = vae_custom_r2s
+                results_rrr[area_x][area_y]["pc1_custom_r2"][
+                    shift
+                ] = pc2_custom_r2s
+                results_rrr[area_x][area_y]["vae_custom_r2"][
+                    shift
+                ] = vae_custom_r2s
 
     mempool = cp.get_default_memory_pool()
     pinned_mempool = cp.get_default_pinned_memory_pool()
@@ -244,7 +270,9 @@ class ReducedRankRegression:
         self.verbose = verbose
         return
 
-    def center_XY_train(self, X: np.ndarray, Y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def center_XY_train(
+        self, X: np.ndarray, Y: np.ndarray
+    ) -> Tuple[np.ndarray, np.ndarray]:
         self.X_train_mean = np.mean(X, axis=0, keepdims=True)
         self.Y_train_mean = np.mean(Y, axis=0, keepdims=True)
 
@@ -273,7 +301,9 @@ class ReducedRankRegression:
         Y = cp.asarray(Y)
 
         if self.verbose:
-            print(f"Fitting Reduced Rank Regression to data X: {X.shape} and Y: {Y.shape}")
+            print(
+                f"Fitting Reduced Rank Regression to data X: {X.shape} and Y: {Y.shape}"
+            )
 
         if fit_intercept:
             # Assuming X and Y are not centered
@@ -284,7 +314,9 @@ class ReducedRankRegression:
 
         if self.use_sklearn:
             # Use the sklearn solver instead of the closed-form solution
-            ridge = sklearn.linear_model.Ridge(alpha=self.lam, fit_intercept=False)
+            ridge = sklearn.linear_model.Ridge(
+                alpha=self.lam, fit_intercept=False
+            )
             b_ridge = ridge.fit(X, Y).coef_.T
 
         else:
@@ -360,10 +392,14 @@ class ReducedRankRegression_:
         X_star = cp.vstack((X, cp.sqrt(self.lam) * cp.eye(X.shape[1])))
 
         CXY = X.T @ Y
-        CXX_inv = cp.linalg.pinv((X.T @ X) + cp.sqrt(self.lam) * cp.eye(X.shape[1]))
+        CXX_inv = cp.linalg.pinv(
+            (X.T @ X) + cp.sqrt(self.lam) * cp.eye(X.shape[1])
+        )
 
         b_ridge = CXX_inv @ CXY  # Shape P x Q. Maps X-feat to Y-feat
-        _, _, Vt = cp.linalg.svd(X_star @ b_ridge, full_matrices=False)  # Shape q x q
+        _, _, Vt = cp.linalg.svd(
+            X_star @ b_ridge, full_matrices=False
+        )  # Shape q x q
 
         self.coef_ = Vt.T[:, : self.rank] @ Vt[: self.rank, :] @ b_ridge
 
@@ -513,7 +549,9 @@ class ReducedRankRegressorBence(BaseEstimator):
         """
         if np.size(np.shape(X)) == 1:
             X = np.reshape(X, (-1, 1))
-        return np.array(((X - self.mean_input) @ self.projector_mx) + self.mean_output)
+        return np.array(
+            ((X - self.mean_input) @ self.projector_mx) + self.mean_output
+        )
 
     @property
     def coef_(self):
@@ -596,7 +634,9 @@ class ReducedRankRegressorBenceGPU(BaseEstimator):
         X = cp.asarray(X)
         if X.ndim == 1:
             X = X.reshape(-1, 1)
-        return cp.array(((X - self.mean_input) @ self.projector_mx) + self.mean_output).get()
+        return cp.array(
+            ((X - self.mean_input) @ self.projector_mx) + self.mean_output
+        ).get()
 
     @property
     def coef_(self):

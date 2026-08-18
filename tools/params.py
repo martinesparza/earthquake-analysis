@@ -88,7 +88,7 @@ class Params:
         "right_wrist",
     ]
     areas = ["MOp", "SSp", "CP", "VAL"]
-    keypoints = [
+    all_keypoints = [
         "left_ankle",
         "left_ankle_angle",
         "left_elbow",
@@ -112,6 +112,28 @@ class Params:
         "right_wrist",
         "right_wrist_angle",
         "shoulder_center",
+        "tail_base",
+        "tail_middle",
+        "tail_tip",
+        "hip_center",
+    ]
+    pos_keypoints = [
+        "left_ankle",
+        "left_elbow",
+        "left_foot",
+        "left_knee",
+        "left_paw",
+        "left_wrist",
+        "left_shoulder",
+        "right_ankle",
+        "right_elbow",
+        "right_foot",
+        "right_knee",
+        "right_paw",
+        "right_wrist",
+        "right_shoulder",
+        "shoulder_center",
+        "hip_center",
         "tail_base",
         "tail_middle",
         "tail_tip",

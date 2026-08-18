@@ -399,7 +399,9 @@ def add_pca_df(
 
 def add_bhv(trial_data, bhv_fields=["all"]):
     if bhv_fields[0] == "all":
-        bhv_fields = Params.keypoints
+        bhv_fields = Params.all_keypoints
+    elif bhv_fields[0] == "pos_keypoints":
+        bhv_fields = Params.pos_keypoints
     trial_data = trial_data.copy()
     bhv_list = []
     for trial in range(len(trial_data)):

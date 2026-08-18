@@ -63,7 +63,9 @@ def decoding_moving_window_no_time_concat(
         max_time_bin = X.shape[1]
 
     for t in tqdm(
-        np.arange(min_time_bin, max_time_bin + 1 - window_length_bin, step=step_bin)
+        np.arange(
+            min_time_bin, max_time_bin + 1 - window_length_bin, step=step_bin
+        )
     ):
 
         X_ = X[:, t : t + window_length_bin, :]
@@ -88,7 +90,9 @@ def decoding_moving_window_no_time_concat(
         r2_scores.append(r2)
     y_preds = np.array(y_preds)
     scores = np.array(r2_scores)
-    time_points = np.arange(min_time_bin + window_length_bin, max_time_bin + 1, step_bin)
+    time_points = np.arange(
+        min_time_bin + window_length_bin, max_time_bin + 1, step_bin
+    )
 
     return scores, time_points * bin_size, y_preds
 
@@ -112,7 +116,9 @@ def decoding_moving_window(
         max_time_bin = X.shape[1]
 
     for t in tqdm(
-        np.arange(min_time_bin, max_time_bin + 1 - window_length_bin, step=step_bin)
+        np.arange(
+            min_time_bin, max_time_bin + 1 - window_length_bin, step=step_bin
+        )
     ):
 
         X_ = X[:, t : t + window_length_bin, :]
@@ -129,7 +135,9 @@ def decoding_moving_window(
         )
         r2_scores.append(r2)
     scores = np.array(r2_scores)
-    time_points = np.arange(min_time_bin + window_length_bin, max_time_bin + 1, step_bin)
+    time_points = np.arange(
+        min_time_bin + window_length_bin, max_time_bin + 1, step_bin
+    )
 
     return scores, time_points * bin_size
 
@@ -153,9 +161,14 @@ def regression_moving_window(
         max_time_bin = X.shape[1]
 
     for t in tqdm(
-        np.arange(min_time_bin, max_time_bin + 1 - window_length_bin, step=step_bin)
+        np.arange(
+            min_time_bin, max_time_bin + 1 - window_length_bin, step=step_bin
+        )
     ):
-        X_, y_ = X[:, t : t + window_length_bin, :], y[:, t : t + window_length_bin, :]
+        X_, y_ = (
+            X[:, t : t + window_length_bin, :],
+            y[:, t : t + window_length_bin, :],
+        )
         n_trials, n_time, _ = X_.shape
         r2 = cross_val_score(
             Ridge(alpha=alpha, solver="svd"),
@@ -166,7 +179,9 @@ def regression_moving_window(
         )
         r2_scores.append(r2)
     scores = np.array(r2_scores)
-    time_points = np.arange(min_time_bin + window_length_bin, max_time_bin + 1, step_bin)
+    time_points = np.arange(
+        min_time_bin + window_length_bin, max_time_bin + 1, step_bin
+    )
 
     return scores, time_points * bin_size
 
@@ -186,15 +201,21 @@ def moving_window_decoding(
         max_time_bin = data.shape[1]
 
     for t in tqdm(
-        np.arange(max_time_bin - min_time_bin + 1 - window_length_bin, step=step_bin)
+        np.arange(
+            max_time_bin - min_time_bin + 1 - window_length_bin, step=step_bin
+        )
     ):
         data_ = data[:, t : t + window_length_bin, :]
         data_ = data_.reshape(-1, data_.shape[1] * data_.shape[2])
-        score = cross_val_score(GaussianNB(), data_, targets, scoring="accuracy", cv=cv)
+        score = cross_val_score(
+            GaussianNB(), data_, targets, scoring="accuracy", cv=cv
+        )
         scores.append(score)
 
     scores = np.array(scores)
-    time_points = np.arange(min_time_bin + window_length_bin, max_time_bin + 1, step_bin)
+    time_points = np.arange(
+        min_time_bin + window_length_bin, max_time_bin + 1, step_bin
+    )
 
     return scores, time_points * bin_size
 
@@ -206,7 +227,9 @@ def columnwise_r2(Y_true: np.ndarray, Y_pred: np.ndarray) -> np.ndarray:
     return r2
 
 
-def multivariate_r2(Y_true: np.ndarray, Y_pred: np.ndarray) -> Tuple[float, np.ndarray]:
+def multivariate_r2(
+    Y_true: np.ndarray, Y_pred: np.ndarray
+) -> Tuple[float, np.ndarray]:
     ss_res = np.linalg.norm(Y_true - Y_pred, ord="fro") ** 2
     ss_tot = np.linalg.norm(Y_true - Y_true.mean(axis=0), ord="fro") ** 2
     multi_r2 = 1 - ss_res / ss_tot
@@ -310,7 +333,8 @@ def within_decoding(
     if ax is not None:
         avg_conf_matrix = np.mean(conf_matrices, axis=0)
         avg_conf_matrix = (
-            avg_conf_matrix.astype("float") / avg_conf_matrix.sum(axis=1)[:, np.newaxis]
+            avg_conf_matrix.astype("float")
+            / avg_conf_matrix.sum(axis=1)[:, np.newaxis]
         )
         sns.heatmap(
             avg_conf_matrix,
@@ -360,7 +384,9 @@ def plot_decoding_over_time(
         within_results_over_time = []
         for timebin in range(min_timebin, max_timebin):
             perturb_epoch = pyal.generate_epoch_fun(
-                start_point_name=idx_event, rel_start=int(min_timebin), rel_end=int(timebin)
+                start_point_name=idx_event,
+                rel_start=int(min_timebin),
+                rel_end=int(timebin),
             )
             if units_per_area is not None:
                 area = "all"
@@ -377,7 +403,9 @@ def plot_decoding_over_time(
                 model=model,
                 trial_conditions=trial_conditions,
             )
-            within_results_over_time.append([result for result in within_results.values()])
+            within_results_over_time.append(
+                [result for result in within_results.values()]
+            )
 
         within_results_per_area.append(np.array(within_results_over_time))
 
@@ -397,7 +425,9 @@ def plot_decoding_over_time(
     ax.set_ylabel("Decoding accuracy (%)")
     ax.set_title(f"Decoding accuracy using increasing time intervals")
     ax.axvline(x=0, color="k", linestyle="--", label=idx_event)
-    ax.axhline(y=chance_level, color="red", linestyle="--", label="Chance level")
+    ax.axhline(
+        y=chance_level, color="red", linestyle="--", label="Chance level"
+    )
     ax.legend()
 
 
@@ -435,7 +465,9 @@ def plot_decoding_moving_window(
     window_size_bins = int(window_length / bin_size)
     step_size_bins = int(step / bin_size)
 
-    time_points = np.arange(min_timebin, max_timebin - window_size_bins, step_size_bins)
+    time_points = np.arange(
+        min_timebin, max_timebin - window_size_bins, step_size_bins
+    )
 
     # model_full = PCA(n_components=n_components, svd_solver="full")
 
@@ -447,7 +479,9 @@ def plot_decoding_moving_window(
             rates = np.concatenate(df[f"{area}_rates"].values, axis=0)
             rates_model = model_full.fit(rates)
             modified_df_list.append(
-                pyal.apply_dim_reduce_model(df, rates_model, f"{area}_rates", f"{area}_pca")
+                pyal.apply_dim_reduce_model(
+                    df, rates_model, f"{area}_rates", f"{area}_pca"
+                )
             )
 
         within_results_over_time = []
@@ -476,7 +510,9 @@ def plot_decoding_moving_window(
                 model=model,
                 trial_conditions=trial_conditions,
             )
-            within_results_over_time.append([result for result in within_results.values()])
+            within_results_over_time.append(
+                [result for result in within_results.values()]
+            )
 
         within_results_per_area.append(np.array(within_results_over_time))
 
@@ -496,8 +532,12 @@ def plot_decoding_moving_window(
     ax.set_xlabel("Time relative to event (ms)")
     ax.set_ylabel("Decoding Accuracy (%)")
     ax.set_title(f"Decoding Accuracy of {category} ({window_length*1000} ms)")
-    ax.axvline(x=0, color="k", linestyle="--", label=f"Event: {idx_event}")  # Mark event
-    ax.axhline(y=chance_level, color="red", linestyle="--", label="Chance level")
+    ax.axvline(
+        x=0, color="k", linestyle="--", label=f"Event: {idx_event}"
+    )  # Mark event
+    ax.axhline(
+        y=chance_level, color="red", linestyle="--", label="Chance level"
+    )
     ax.legend()
 
 
@@ -527,7 +567,9 @@ def plot_decoding_moving_window_per_component(
     window_size_bins = int(window_length / bin_size)
     step_size_bins = int(step / bin_size)
 
-    time_points = np.arange(min_timebin, max_timebin - window_size_bins, step_size_bins)
+    time_points = np.arange(
+        min_timebin, max_timebin - window_size_bins, step_size_bins
+    )
 
     results_matrix = np.zeros((max_components, len(time_points)))
 
@@ -568,7 +610,9 @@ def plot_decoding_moving_window_per_component(
             )
 
             # Store the mean accuracy over time
-            results_matrix[n_components - 1, i] = np.mean(list(within_results.values()))
+            results_matrix[n_components - 1, i] = np.mean(
+                list(within_results.values())
+            )
 
     time_axis = (
         (time_points + window_size_bins) * bin_size
@@ -576,7 +620,9 @@ def plot_decoding_moving_window_per_component(
     chance_level = 1 / len(np.unique(df_list[0][category]))
     # Plot heatmap
     zero_index = np.argmin(np.abs(time_axis))
-    ax.axvline(x=zero_index, color="red", linestyle="--", linewidth=2, label=idx_event)
+    ax.axvline(
+        x=zero_index, color="red", linestyle="--", linewidth=2, label=idx_event
+    )
     sns.heatmap(
         results_matrix,
         ax=ax,
