@@ -53,7 +53,7 @@ POST = (0.0, 1.5)  # response window (s, rel. onset) -- peak is measured here
 N_SHUFFLE = 200
 REL_START, REL_END = -200, 200  # bins around idx_sol_on -> +/-2s epoch
 
-OUT_DIR = Path(__file__).resolve().parent / "data"
+OUT_DIR = Params.ACROSS_SESSION_RESULTS_DIR / "fraction-above-chance" / "data"
 
 
 def pta_and_null(X, onset, base_sl, post_sl, n_shuffle, rng):

@@ -131,7 +131,7 @@ def preprocess(
     ]
 
     df["sol_contra_ipsi"] = [
-        Params.sol_dir_to_contra_ipse[dir_] if trial_name == "trial" else None
+        Params.sol_dir_to_contra_ipsi[dir_] if trial_name == "trial" else None
         for dir_, trial_name in zip(
             df["values_Sol_direction"], df["trial_name"]
         )
@@ -142,7 +142,7 @@ def preprocess(
 
 def load_and_preprocess_trials_from_sess(
     session,
-    data_dir="C:/data/raw/",
+    data_dir="/mnt/mouse-data-london/proc/",
     bhv_fields=Params.oscillating_keypoints,
     std=0.05,
     run_pca=True,

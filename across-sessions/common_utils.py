@@ -32,7 +32,7 @@ sys.path.insert(
 )  # repo root, for `tools`
 import tools.dsp as dsp  # noqa: E402
 
-DATA_DIR = "C:/data/raw/"
+DATA_DIR = "/mnt/mouse-data-london/proc/"
 STD = 0.03
 
 # Canonical session list -- matches the ALL_SESSIONS default used by the repo's most recent
@@ -45,7 +45,7 @@ ALL_SESSIONS = [
     "M061_2025_03_05_14_00",
     "M061_2025_03_06_14_00",
     "M063_2025_03_13_14_00",
-    "M063_2025_03_14_15_30",
+    # "M063_2025_03_14_15_30",
     "M062_2025_03_20_14_00",
     "M062_2025_03_21_14_00",
     "M078_2025_08_06_15_00",

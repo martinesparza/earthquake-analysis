@@ -120,12 +120,12 @@ def compute_power_in_bhv_concat_td(
 
     # only the columns this loop needs, and only trial rows to avoid iterrows()
     trial_cols = td.loc[
-        td.trial_name == "trial", ["bhv_concat", "concat_perturb_time"]
+        td.trial_name == "trial", ["bhv_concat", "concat_perturb_time", "bhv"]
     ]
 
     n_total = len(trial_cols)
     n_skipped = 0
-    for idx, bhv_concat, perturb_idx in trial_cols.itertuples():
+    for idx, bhv_concat, perturb_idx, bhv in trial_cols.itertuples():
         _, freqs, psd = compute_peak_freq_pre_perturb(
             bhv_concat, perturb_idx=perturb_idx
         )
@@ -144,10 +144,18 @@ def compute_power_in_bhv_concat_td(
             td.at[idx, "power"] = np.log10(np.squeeze(power, axis=0))
 
         if phase:
-            _, instantaneous_phase = dsp.get_power_phase_in_freq_range(
-                bhv_concat, 100, (peak_mean_freq - 1, peak_mean_freq + 1)
+            instantaneous_phase, warmup = dsp.causal_phase_arr(
+                bhv_concat,
+                fs=100,
+                center_freqs=peak_mean_freq,
+                bandwidth=2,
             )
-            td.at[idx, "phases"] = instantaneous_phase
+
+            # pad it to 600 so that the cropping functions downstread work
+            seg = instantaneous_phase[perturb_idx + warmup - 200 :]
+            padded = np.full((bhv.shape[0], seg.shape[-1]), np.nan)
+            padded[: min(len(seg), bhv.shape[0])] = seg[: bhv.shape[0]]
+            td.at[idx, "phases"] = padded
 
     n_passed = n_total - n_skipped
     print(

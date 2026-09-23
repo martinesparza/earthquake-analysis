@@ -37,13 +37,18 @@ dependencies = [
     "seaborn>=0.13.2",
     "hmmlearn>=0.3.3",
     "ipympl>=0.10.0",
+    "rsatoolbox>=0.3.2",
+    "dpca>=1.0.5",
+    "numexpr>=2.14.2",
+    "numba>=0.67.0",
+    "statsmodels>=0.15.0",
 ]
 
 [tool.uv]
 package = false
 
 [tool.uv.sources]
-pyaldata = { path = "C:\\Users\\MartinEsparzaINBRAIN\\repos\\pyaldata", editable = true }
+pyaldata = { path = "/root/repos/pyaldata", editable = true }
 
 [build-system]
 requires = ["hatchling"]

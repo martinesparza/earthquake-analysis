@@ -44,13 +44,14 @@ import common_utils as cu  # noqa: E402
 import tools.dataTools as dt  # noqa: E402
 import tools.decoding as decode  # noqa: E402
 import tools.kinematics as kin  # noqa: E402
+from tools.params import Params  # noqa: E402
 
 FS = 100  # bhv stays at 10 ms bins regardless of Params.BIN_SIZE
 REL_START, REL_END = -200, 200  # bins around idx_sol_on -> +/-2s epoch
 POST = (0.0, 1.5)  # fixed decoding window (s, rel. onset)
 CV_FOLDS = 5
 
-OUT_DIR = Path(__file__).resolve().parent / "data"
+OUT_DIR = Params.ACROSS_SESSION_RESULTS_DIR / "bhv-decode-solenoid" / "data"
 
 
 def run(session, data_dir=cu.DATA_DIR, std=cu.STD):

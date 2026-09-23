@@ -43,10 +43,11 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))  # across-sessions/, f
 sys.path.append(str(Path(__file__).resolve().parents[2]))  # repo root, for tools
 import common_utils as cu  # noqa: E402
 import tools.kinematics as kin  # noqa: E402
+from tools.params import Params  # noqa: E402
 
 REL_START, REL_END = -200, 200  # bins around idx_sol_on -> +/-2s epoch
 
-OUT_DIR = Path(__file__).resolve().parent / "data"
+OUT_DIR = Params.ACROSS_SESSION_RESULTS_DIR / "running-direction" / "data"
 
 
 def circular_stats(yaw_deg):

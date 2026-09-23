@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pyaldata as pyal
@@ -6,6 +7,11 @@ import pyaldata as pyal
 
 @dataclass
 class Params:
+    # Mounted drive location for cross-session results/reports, shared across sessions/machines.
+    ACROSS_SESSION_RESULTS_DIR = Path(
+        "/mnt/datascience/workspaces/mesparza-40inbrain-2dneuroelectronics-2ecom/equake-interim-results"
+    )
+
     BIN_SIZE = 0.03  # Desired bin size for analysis.
     WINDOW_perturb = (0, 1.5)
     perturb_epoch = pyal.generate_epoch_fun(
@@ -29,7 +35,7 @@ class Params:
     )
 
     # 0 = ipsi, 1 = contra
-    sol_dir_to_contra_ipse = {
+    sol_dir_to_contra_ipsi = {
         0: 0,
         1: 1,
         2: 1,

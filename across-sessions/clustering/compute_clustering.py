@@ -50,20 +50,28 @@ from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))  # across-sessions/, for common_utils
-sys.path.append(str(Path(__file__).resolve().parents[2]))  # repo root, for tools
+sys.path.append(
+    str(Path(__file__).resolve().parents[1])
+)  # across-sessions/, for common_utils
+sys.path.append(
+    str(Path(__file__).resolve().parents[2])
+)  # repo root, for tools
 import common_utils as cu  # noqa: E402
 import tools.dataTools as dt  # noqa: E402
 import tools.kinematics as kin  # noqa: E402
+from tools.params import Params  # noqa: E402
 
 FS = 100
-POST = (0.0, 1.5)  # response window (s, rel. onset) -- clustering runs on this window
+POST = (
+    0.0,
+    1.5,
+)  # response window (s, rel. onset) -- clustering runs on this window
 REL_START, REL_END = -200, 200  # bins around idx_sol_on -> +/-2s epoch
 N_PCA = 20
-N_NULL = 50
+N_NULL = 500
 SEED = 0
 
-OUT_DIR = Path(__file__).resolve().parent / "data"
+OUT_DIR = Params.ACROSS_SESSION_RESULTS_DIR / "clustering" / "data"
 
 
 def run(session, data_dir=cu.DATA_DIR, std=cu.STD):
@@ -92,8 +100,10 @@ def run(session, data_dir=cu.DATA_DIR, std=cu.STD):
     k_pca = min(N_PCA, n_trials - 1, X_flat.shape[1])
     pca = PCA(n_components=k_pca, random_state=SEED)
     X_pca = pca.fit_transform(X_scaled)
-    print(f"  {n_trials} trials, {X_flat.shape[1]} raw features -> {k_pca} PCs "
-          f"({pca.explained_variance_ratio_.sum():.1%} var)")
+    print(
+        f"  {n_trials} trials, {X_flat.shape[1]} raw features -> {k_pca} PCs "
+        f"({pca.explained_variance_ratio_.sum():.1%} var)"
+    )
 
     k_range = [k for k in range(2, 9) if k < n_trials]
     sil_scores = []
@@ -111,15 +121,19 @@ def run(session, data_dir=cu.DATA_DIR, std=cu.STD):
     rng = np.random.default_rng(SEED)
     null_sil = np.full(N_NULL, np.nan)
     for i in range(N_NULL):
-        X_shuff = np.column_stack([rng.permutation(X_pca[:, j]) for j in range(X_pca.shape[1])])
+        X_shuff = np.column_stack(
+            [rng.permutation(X_pca[:, j]) for j in range(X_pca.shape[1])]
+        )
         km_null = KMeans(n_clusters=k_best, n_init=10, random_state=SEED)
         labels_null = km_null.fit_predict(X_shuff)
         null_sil[i] = silhouette_score(X_shuff, labels_null)
 
     null95 = np.percentile(null_sil, 95)
     p_value = (np.sum(null_sil >= obs_sil) + 1) / (N_NULL + 1)
-    print(f"  k_best={k_best}: observed silhouette={obs_sil:.3f}, null95={null95:.3f}, "
-          f"p={p_value:.3f}{'  ** SIGNIFICANT **' if p_value < 0.05 else ''}")
+    print(
+        f"  k_best={k_best}: observed silhouette={obs_sil:.3f}, null95={null95:.3f}, "
+        f"p={p_value:.3f}{'  ** SIGNIFICANT **' if p_value < 0.05 else ''}"
+    )
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out = OUT_DIR / f"{session}.npz"
@@ -144,7 +158,9 @@ def run(session, data_dir=cu.DATA_DIR, std=cu.STD):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--sessions", nargs="+", default=cu.ALL_SESSIONS, metavar="SESSION")
+    parser.add_argument(
+        "--sessions", nargs="+", default=cu.ALL_SESSIONS, metavar="SESSION"
+    )
     args = parser.parse_args()
 
     for session in args.sessions:

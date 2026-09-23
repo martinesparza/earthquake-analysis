@@ -52,7 +52,7 @@ N_SHUFFLE = 200
 REL_START, REL_END = -200, 200  # bins around idx_sol_on -> +/-2s epoch
 
 DIM_LABELS = ["rc", "vt", "ml"]
-OUT_DIR = Path(__file__).resolve().parent / "data"
+OUT_DIR = Params.ACROSS_SESSION_RESULTS_DIR / "trial-correlations" / "data"
 
 
 def _mean_offdiag(mat):
