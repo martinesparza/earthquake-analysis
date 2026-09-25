@@ -214,6 +214,13 @@ def load_and_preprocess_trials_from_sess(
     # 4 — perturbation metric (requires behavioural data; skips if absent)
     if has_bhv:
         print(f"\n##### Calculating perturbation metric ######")
+        # drop_unsteady_running_trials (step 3) always builds `bhv` from
+        # Params.oscillating_keypoints if it wasn't already present -- that's
+        # deliberate for its own immobility check, but it means `bhv` may not
+        # match this function's own `bhv_fields`. Rebuild it here so
+        # compute_perturb_score's `on_keypoints` offsets are computed against
+        # a `bhv` that actually has that layout, regardless of what step 3 left.
+        df = dt.add_bhv(df, bhv_fields=bhv_fields)
         try:
             df = kin.compute_perturb_score(
                 df,
@@ -226,10 +233,11 @@ def load_and_preprocess_trials_from_sess(
                 f"Skipping disturbance metric and trial dropping."
             )
 
-    df["perturb_score_mean"] = df["perturb_score"].apply(np.mean)
-    df["perturb_score_log_sum"] = df["perturb_score"].apply(
-        lambda a: np.log10(np.abs(np.sum(a)))
-    )
+    if "perturb_score" in df.columns:
+        df["perturb_score_mean"] = df["perturb_score"].apply(np.mean)
+        df["perturb_score_log_sum"] = df["perturb_score"].apply(
+            lambda a: np.log10(np.abs(np.sum(a)))
+        )
     return df
 
 

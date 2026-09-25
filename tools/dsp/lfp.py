@@ -94,7 +94,7 @@ def causal_phase_estimator(x, fs, center_freq, bandwidth=2, numtaps=71):
     # delay the real branch by d to align it with xq's extra delay
     xr[d:] = xf[:-d]
 
-    # phase will be nans up until 2*d
+    # phase will be nans up until (M-1) / 2
     phase = np.arctan2(xq, xr)
     amp = np.hypot(xq, xr)
     warmup = 2 * d

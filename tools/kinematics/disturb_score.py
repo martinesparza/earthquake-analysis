@@ -152,6 +152,7 @@ def compute_power_in_bhv_concat_td(
             )
 
             # pad it to 600 so that the cropping functions downstread work
+            # 200 because that is perturbation onset time
             seg = instantaneous_phase[perturb_idx + warmup - 200 :]
             padded = np.full((bhv.shape[0], seg.shape[-1]), np.nan)
             padded[: min(len(seg), bhv.shape[0])] = seg[: bhv.shape[0]]
@@ -299,7 +300,7 @@ def compute_perturb_score(
     """
     if "bhv" not in df.columns:
         print("bhv column not found, adding it")
-        df = dt.add_bhv(df, bhv_fields=Params.oscillating_keypoints)
+        df = dt.add_bhv(df, bhv_fields=on_keypoints)
 
     if isinstance(feature_dims, str):
         feature_dims = get_keypoint_dim_indices(
