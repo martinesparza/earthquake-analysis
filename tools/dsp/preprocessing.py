@@ -352,7 +352,7 @@ def drop_unperturbed_or_stopped_trials(
     n_total = len(trial_td)
     print(
         f"  drop_unperturbed_trials: "
-        f"dropped by {stat}: {(~by_sem).sum()}  |  dropped by value: {(~by_value).sum()}  |  "
+        f"dropped by stat={stat}: {(~by_sem).sum()}  |  dropped by value: {(~by_value).sum()}  |  "
         f"kept: {mask.sum()}/{n_total} ({100*mask.sum()/n_total:.1f}%)"
     )
     if return_count:

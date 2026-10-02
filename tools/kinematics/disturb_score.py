@@ -116,7 +116,9 @@ def compute_power_in_bhv_concat_td(
     """
     td = td.copy()
     td["power"] = pd.Series([None] * len(td), dtype="object", index=td.index)
-    td["phases"] = pd.Series([None] * len(td), dtype="object", index=td.index)
+    td["phase_at_perturb"] = pd.Series(
+        [None] * len(td), dtype="object", index=td.index
+    )
 
     # only the columns this loop needs, and only trial rows to avoid iterrows()
     trial_cols = td.loc[
@@ -144,28 +146,17 @@ def compute_power_in_bhv_concat_td(
             td.at[idx, "power"] = np.log10(np.squeeze(power, axis=0))
 
         if phase:
-            instantaneous_phase, warmup = dsp.causal_phase_arr(
+            phase_at_perturb = dsp.get_phase_at_perturb(
                 bhv_concat,
-                fs=100,
-                center_freqs=peak_mean_freq,
-                bandwidth=2,
+                onset=perturb_idx,
+                peak_freq=peak_mean_freq,
             )
-
-            # pad it to 600 so that the cropping functions downstread work
-            # 200 because that is perturbation onset time
-            seg = instantaneous_phase[perturb_idx + warmup - 200 :]
-            padded = np.full((bhv.shape[0], seg.shape[-1]), np.nan)
-            padded[: min(len(seg), bhv.shape[0])] = seg[: bhv.shape[0]]
-            td.at[idx, "phases"] = padded
+            td.at[idx, "phase_at_perturb"] = phase_at_perturb
 
     n_passed = n_total - n_skipped
     print(
         f"compute_power_in_bhv_concat_td: dropping {n_skipped} trial(s) with peak_mean_freq < 2 Hz"
     )
-    # print(
-    #     f"{n_passed} / {n_total} trials pass the peak_mean_freq >= {freq_tresh} Hz gate "
-    #     f"({n_passed / n_total:.1%})"
-    # )
     return td
 
 

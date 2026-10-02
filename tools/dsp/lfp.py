@@ -75,37 +75,53 @@ def causal_hilbert_fir(numtaps, window="hamming"):
     return h * get_window(window, numtaps)
 
 
-def causal_phase_estimator(x, fs, center_freq, bandwidth=2, numtaps=71):
-    """Causal band-pass + causal Hilbert -> instantaneous phase and amplitude.
-
-    Both filters are linear-phase FIR (constant group delay), so the combined delay is
-    known exactly: 2 * (numtaps - 1) // 2 samples. Output before that many samples have
-    elapsed is filter transient, not a valid estimate -- see the returned `warmup`.
-    """
-    lo, hi = center_freq - bandwidth / 2, center_freq + bandwidth / 2
-    bp_taps = firwin(numtaps, [lo, hi], pass_zero=False, fs=fs)
-    hilb_taps = causal_hilbert_fir(numtaps)
-
-    xf = lfilter(bp_taps, 1.0, x)  # causal band-pass, delay d
-    xq = lfilter(hilb_taps, 1.0, xf)  # causal quadrature branch, +d more delay
-
-    d = (numtaps - 1) // 2
-    xr = np.full_like(xf, np.nan)
-    # delay the real branch by d to align it with xq's extra delay
-    xr[d:] = xf[:-d]
-
-    # phase will be nans up until (M-1) / 2
-    phase = np.arctan2(xq, xr)
-    amp = np.hypot(xq, xr)
-    warmup = 2 * d
-    return phase, warmup
-
-
-def causal_phase_arr(arr, fs, center_freqs, bandwidth=2, numtaps=71):
-    phases = []
-    for arr_ in arr.T:
-        phase, warmup = causal_phase_estimator(
-            arr_, fs, center_freqs, bandwidth, numtaps
+def sinefit(y, f0, fs=100, f_search=1.0, f_step=0.1):
+    mu = y.mean()
+    y = y - mu
+    t = (np.arange(len(y)) - (len(y) - 1)) / fs
+    best = dict(sse=np.inf)
+    all_f = np.arange(f0 - f_search, f0 + f_search + 1e-9, f_step)
+    sse_ = []
+    for f in all_f:
+        A = np.column_stack(
+            [
+                np.ones_like(t),
+                t,
+                np.cos(2 * np.pi * f * t),
+                np.sin(2 * np.pi * f * t),
+            ]
         )
+        b, *_ = np.linalg.lstsq(A, y, rcond=None)
+        sse = np.sum((y - A @ b) ** 2)
+        sse_.append(sse)
+        if sse < best["sse"]:
+            best = dict(sse=sse, f=f, b=b)
+    sse_ = np.array(sse_)
+    phase = -np.arctan2(best["b"][3], best["b"][2])
+    return phase, best["f"], best["b"], mu, all_f, sse_
+
+
+def get_phase_at_perturb(x, onset, peak_freq, window=30):
+    """Compute causal phase of each keypoint at onset
+
+    Parameters
+    ----------
+    x : _type_
+        _description_
+    onset : _type_
+        _description_
+    window : _type_
+        _description_
+    peak_freq : _type_
+        _description_
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
+    phases = []
+    for kp_arr in x.T:
+        phase, *_ = sinefit(kp_arr[onset - window + 1 : onset + 1], peak_freq)
         phases.append(phase)
-    return np.array(phases).T, warmup
+    return np.array(phases)
