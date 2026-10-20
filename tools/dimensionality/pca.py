@@ -6,14 +6,19 @@ from sklearn.decomposition import PCA
 
 
 def compute_pca(arr, n_components=None):
-    """Computes pca on array
+    """Fit a full-SVD sklearn PCA to an observations x features array.
 
-    Args:
-        arr (np.ndarray): Observations x features array
-        n_components (int, optional): Number of component to use. Defaults to None.
+    Parameters
+    ----------
+    arr : np.ndarray
+        Data, shape (n_observations, n_features).
+    n_components : int, optional
+        Components to keep (default is all features).
 
-    Returns:
-        sklearn.PCA: PCA model
+    Returns
+    -------
+    sklearn.decomposition.PCA
+        Fitted model.
     """
     if n_components is None:
         n_components = arr.shape[1]
@@ -23,14 +28,19 @@ def compute_pca(arr, n_components=None):
 
 
 def get_explained_variance_ratio(arr, n_components=None):
-    """Returns explained variance ratios
+    """Return the explained variance ratio of each PCA component.
 
-    Args:
-        arr (np.ndarra): Observations x features array
-        n_components (int, optional): Number of components to use. Defaults to None.
+    Parameters
+    ----------
+    arr : np.ndarray
+        Data, shape (n_observations, n_features).
+    n_components : int, optional
+        Components to keep (default is all features).
 
-    Returns:
-        list: explained variance ratio of each component
+    Returns
+    -------
+    np.ndarray
+        Explained variance ratio per component.
     """
 
     model = compute_pca(arr, n_components=n_components)

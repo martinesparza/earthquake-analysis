@@ -8,7 +8,27 @@ def compute_morlet_power(
     n_cycles: float = 3.0,
     wavelet_support: float = 4.0,
 ) -> np.ndarray:
+    """Compute per-frequency power with unit-energy Morlet wavelets, after mean
+    removal.
 
+    Parameters
+    ----------
+    x : np.ndarray
+        Signal, shape (T,) or (T, n_features).
+    fs : float
+        Sampling rate in Hz.
+    freqs : np.ndarray
+        Centre frequencies in Hz.
+    n_cycles : float, optional
+        Cycles in the Gaussian envelope (default is 3.0).
+    wavelet_support : float, optional
+        Wavelet half-length in Gaussian sigmas (default is 4.0).
+
+    Returns
+    -------
+    np.ndarray
+        Power, shape (n_freqs, T, n_features); 3D even for 1D input.
+    """
     x = np.asarray(x, dtype=float)
     if x.ndim == 1:
         x = x[:, None]  # (T, 1)
@@ -48,15 +68,21 @@ def compute_morlet_power(
 
 
 def moving_window_mean(data, window_size):
-    """Compute rolling mean specifying window size and ata
+    """Compute the mean over a sliding window, advancing one sample at a time.
 
-    Args:
-        data (np.ndarray): 1d or 2d array
-        window_size (int): Second for window
+    Parameters
+    ----------
+    data : np.ndarray
+        Array, shape (T,) or (T, n_columns).
+    window_size : int
+        Window length in samples, not seconds.
 
-    Returns:
-        means : nd.array
-        time_bins : np.ndarray
+    Returns
+    -------
+    means : np.ndarray
+        Mean of each window, one per window position.
+    time_bins : np.ndarray
+        Index one past the last sample of each window.
     """
 
     means = []
@@ -74,13 +100,18 @@ def moving_window_mean(data, window_size):
 
 
 def sort_neurons_in_time_array(arr):
-    """Given an array of neurons x time, sorts and zscores them.
+    """Sort neurons by peak-activity time, then z-score with one global mean
+    and std.
 
-    Args:
-        arr (np.array): naurons x time
+    Parameters
+    ----------
+    arr : np.ndarray
+        Activity, shape (n_neurons, T).
 
-    Returns:
-        np.array: sorted and z-scored array
+    Returns
+    -------
+    np.ndarray
+        Sorted, z-scored array, shape (n_neurons, T).
     """
     max_firing_times = np.argmax(
         arr, axis=1
@@ -100,6 +131,25 @@ def sort_neurons_in_time_array(arr):
 
 
 def compute_moving_window_mean_on_array(df, signal, window_s):
+    """Take a moving-window mean over a column concatenated across rows, so
+    windows can span rows.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Trial data; the first row's ``bin_size`` sets the window.
+    signal : str
+        Column of (time x channels) arrays.
+    window_s : float
+        Window length in seconds.
+
+    Returns
+    -------
+    means : np.ndarray
+        Moving-window means.
+    time_bins : np.ndarray
+        Window end indices into the concatenated array.
+    """
     arr = np.concatenate(df[signal].values, axis=0)
     means, time_bins = moving_window_mean(arr, int(window_s / df.bin_size.values[0]))
     return means, time_bins

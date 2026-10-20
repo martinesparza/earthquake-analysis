@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from matplotlib import cm
+from matplotlib.colors import to_rgb
 import numpy as np
 import pyaldata as pyal
 
@@ -63,6 +65,8 @@ class Params:
         10: 1,
         11: 0,
     }
+
+    levelcode_to_str = {0: "top", 1: "bottom"}
 
     sol_dir_to_angle = {
         0: 150,
@@ -179,3 +183,7 @@ class colors:
     GPe = "k"
     bhv_light = np.array([100, 100, 100]) / 255
     bhv_light_light = np.array([175, 175, 175]) / 255
+
+    forelimb = cm.plasma(0.7)
+    hindlimb = cm.plasma(0.3)
+    axial = to_rgb("0.4")

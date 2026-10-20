@@ -18,13 +18,22 @@ directions, unequal counts after trial rejection): the plain pip-package fit
 lets over-represented conditions dominate the noise estimate and leak into
 the "signal" components.
 
+There is one fitting path: `RebalancedDPCA`. It overrides the package's
+``_fit``, so every internal refit -- the cross-validated lambda search and the
+per-split refits of ``significance_analysis`` -- uses the rebalanced ridge
+too. (An older helper, ``fit_dpca_rebalanced``, patched ``P``/``D`` onto a
+plain-ridge fit after the fact, so the lambda search and significance refits
+silently stayed plain-ridge; it was removed.) `fit_dpca` is the usual entry
+point: solenoid codes in, fitted model out.
+
 Notes
 -----
-`fit_dpca_rebalanced` and `rebalanced_noise_variance` were checked
-line-by-line against the MATLAB source in Octave -- axis directions, leakage,
-and the noise estimate all matched -- and `get_var_split` reproduces
-``dpca_explainedVariance.m``'s formulas verbatim. See
-``notebooks/behaviour/response-anatomy.ipynb`` for the original exploration.
+The rebalanced solve (now `RebalancedDPCA._fit`) and
+`rebalanced_noise_variance` were checked line-by-line against the MATLAB
+source in Octave -- axis directions, leakage, and the noise estimate all
+matched -- and `get_var_split` reproduces ``dpca_explainedVariance.m``'s
+formulas verbatim. See ``notebooks/behaviour/response-anatomy.ipynb`` for the
+original exploration.
 
 References
 ----------
@@ -41,33 +50,42 @@ from collections.abc import Callable, Sequence
 
 import numpy as np
 from dPCA import dPCA
+from joblib import Parallel, delayed
 from sklearn.utils.extmath import randomized_svd
 
 from tools.params import Params
 
 
-def _codes_to_angle(codes: Sequence[int] | np.ndarray) -> np.ndarray:
-    """Map solenoid-direction codes (0-11) to their angle in degrees."""
-    return np.array([Params.sol_dir_to_angle[int(c)] for c in codes])
+def _lookup(table: str) -> Callable[[np.ndarray], np.ndarray]:
+    """Return a function mapping solenoid-direction codes through a Params table.
+
+    Parameters
+    ----------
+    table : str
+        Name of a code -> value dict on ``Params``, e.g. "sol_dir_to_level".
+
+    Returns
+    -------
+    callable
+        Maps an array of codes to an array of values.
+    """
+    return lambda codes: np.array(
+        [getattr(Params, table)[int(c)] for c in codes]
+    )
 
 
-# Solenoid-direction code (0-11, `values_Sol_direction` -- see CLAUDE.md, there is
-# no separate `sol_dir` column) -> condition-factor lookups, backed by the Params
-# tables so callers never re-derive or hardcode this mapping themselves.
+# Solenoid-direction code (0-11, `values_Sol_direction`; there is no `sol_dir` column) ->
+# condition-factor lookups, backed by the Params tables. "axis" (30/90/150 deg) and
+# "direction" (which end of that axis) split `angle` in two: angle = axis + 180 * direction,
+# since the six angles are {30, 90, 150} and their +180 deg opposites.
 CONDITION_FACTORS: dict[str, Callable[[np.ndarray], np.ndarray]] = {
-    "level": lambda codes: np.array([Params.sol_dir_to_level[int(c)] for c in codes]),
-    "angle": _codes_to_angle,
-    "contra_ipsi": lambda codes: np.array(
-        [Params.sol_dir_to_contra_ipsi[int(c)] for c in codes]
-    ),
-    # axis (the 30/90/150 deg line through the animal, independent of which end the
-    # perturbation came from) and direction (which of that axis's two opposite ends,
-    # e.g. 30 vs 210 deg) split `angle` in two: angle = axis + 180*direction, valid
-    # because the six sol_dir_to_angle values are exactly {30,90,150} and their
-    # +180 deg opposites {210,270,330}. Use these instead of "angle" when you want
-    # the 3-way/2-way split as separate dPCA factors (e.g. labels='ladt').
-    "axis": lambda codes: _codes_to_angle(codes) % 180,
-    "direction": lambda codes: (_codes_to_angle(codes) // 180).astype(int),
+    "level": _lookup("sol_dir_to_level"),
+    "angle": _lookup("sol_dir_to_angle"),
+    "contra_ipsi": _lookup("sol_dir_to_contra_ipsi"),
+    "axis": lambda codes: _lookup("sol_dir_to_angle")(codes) % 180,
+    "direction": lambda codes: (
+        _lookup("sol_dir_to_angle")(codes) // 180
+    ).astype(int),
 }
 
 
@@ -75,27 +93,24 @@ def conditions_from_codes(
     codes: Sequence[int] | np.ndarray,
     factors: Sequence[str],
 ) -> list[np.ndarray]:
-    """Map raw solenoid-direction codes to one condition array per factor.
+    """Map solenoid-direction codes to one condition array per named factor.
 
     Parameters
     ----------
-    codes : array-like of int, shape (n_trials,)
-        Raw ``values_Sol_direction`` codes (0-11).
+    codes : sequence of int or np.ndarray
+        Raw ``values_Sol_direction`` codes, shape (n_trials,).
     factors : sequence of str
-        Names from `CONDITION_FACTORS` (``"level"``, ``"angle"``, ``"axis"``,
-        ``"direction"``, ``"contra_ipsi"``), one per non-time factor, in the
-        order they will be passed to `fit_rebalanced_dpca`. Position, not the
-        letters of dPCA's ``labels`` string, is what is matched.
+        Keys of ``CONDITION_FACTORS``, in the order passed to the fit.
 
     Returns
     -------
-    list of ndarray
-        One ``(n_trials,)`` array per name in `factors`, in the same order.
+    list of np.ndarray
+        One (n_trials,) array per factor.
 
     Raises
     ------
     ValueError
-        If any name in `factors` is not a key of `CONDITION_FACTORS`.
+        If a factor name is not in ``CONDITION_FACTORS``.
     """
     codes = np.asarray(codes)
     unknown = [f for f in factors if f not in CONDITION_FACTORS]
@@ -107,37 +122,25 @@ def conditions_from_codes(
 
 
 def default_join(labels: str, time_label: str = "t") -> dict[str, list[str]]:
-    """Fold every non-time marginalization into its "+time" counterpart.
+    """Join each non-time marginalization with its time-varying twin, e.g. 'la'
+    with 'lat'.
 
     Parameters
     ----------
     labels : str
-        dPCA ``labels`` string, e.g. ``'lat'`` or ``'ladt'``. Must end in
-        `time_label`, which must not appear anywhere else in the string.
+        dPCA labels ending in the time label, e.g. "lat".
     time_label : str, optional
-        Single letter used for the time factor, by default ``"t"``.
+        Letter of the time factor (default is "t").
 
     Returns
     -------
     dict of {str : list of str}
-        Suitable for ``dPCA.dPCA(..., join=...)``: maps each joined key
-        (e.g. ``'lat'``) to the marginalizations folded into it
-        (``['la', 'lat']``).
+        Joined key mapped to the marginalizations folded into it.
 
     Raises
     ------
     ValueError
-        If `labels` does not end in `time_label` exactly once.
-
-    Notes
-    -----
-    For ``labels='lat'`` every static marginalization (``'l'``, ``'a'``,
-    ``'la'``) is joined with its time-varying twin (``'lt'``, ``'at'``,
-    ``'lat'``), so the fit returns one time-resolved component per subset of
-    the non-time factors and no purely-static marginalization survives on its
-    own. This is the join pattern used throughout this project: after
-    per-neuron centering the purely-static effect is near zero anyway, and
-    every returned component should be plottable as a time course.
+        If ``labels`` does not end in ``time_label`` exactly once.
     """
     if labels[-1] != time_label or time_label in labels[:-1]:
         raise ValueError(
@@ -156,102 +159,73 @@ def build_unbalanced_trial_tensor(
     X: np.ndarray,
     conditions: Sequence[np.ndarray],
 ) -> tuple[np.ndarray, np.ndarray, list[list], dict[tuple, int]]:
-    """Arrange ``(trial, feature, time)`` data into dPCA's NaN-padded layout.
+    """Arrange trials into dPCA's NaN-padded condition grid and per-feature-
+    centred condition means.
 
     Parameters
     ----------
-    X : ndarray, shape (n_trials, n_features, n_time)
-        Per-trial data, already restricted to the fit's time window (e.g. the
-        post-perturbation response window). Time must be the last axis.
-    conditions : sequence of ndarray
-        One ``(n_trials,)`` array per non-time condition factor, e.g.
-        ``[level, angle]`` for ``labels='lat'``. Order matches the non-time
-        part of ``labels``.
+    X : np.ndarray
+        Trials, shape (n_trials, n_features, n_time).
+    conditions : sequence of np.ndarray
+        One (n_trials,) array per non-time factor.
 
     Returns
     -------
-    trialX : ndarray, shape (K, n_features, *cond_dims, n_time)
-        Single-trial data. ``K`` is the largest per-cell trial count; cells
-        with fewer trials are NaN-padded up to ``K`` and cells with no trials
-        are left all-NaN.
-    X_psth : ndarray, shape (n_features, *cond_dims, n_time)
-        Condition mean (``nanmean`` over the trial axis of `trialX`), then
-        centered per feature. This is the array dPCA is fit on.
+    trialX : np.ndarray
+        Shape (K, n_features, *cond_dims, n_time); NaN-padded to K trials.
+    X_psth : np.ndarray
+        Centred condition means, shape (n_features, *cond_dims, n_time).
     cond_values : list of list
-        ``cond_values[k]`` is the sorted list of distinct values taken by
-        factor ``k``; ``cond_values[k][i]`` is the original label for index
-        ``i`` along condition axis ``k`` -- use it to map components back to
-        e.g. real angles in degrees.
+        Sorted distinct labels of each factor.
     counts : dict of {tuple : int}
-        Number of trials for each populated condition cell, keyed by the tuple
-        of real label values. Inspect before fitting to catch badly
-        unbalanced designs.
+        Trial count per populated condition cell.
 
     Raises
     ------
     ValueError
-        If a condition array's length does not match ``n_trials``, or there
-        are no trials.
+        If a condition length is not n_trials, or there are no trials.
 
     Warns
     -----
     RuntimeWarning
-        If any feature is all-NaN in `X_psth` (dead channel, or every
-        condition cell it appears in is empty); its centering is skipped and
-        it stays NaN.
-
-    Notes
-    -----
-    NaN-padding every cell up to ``K`` keeps all trials, unlike subsampling
-    every cell down to the smallest.
+        If a feature is all-NaN in ``X_psth`` (centring skipped).
     """
     conditions = [np.asarray(c) for c in conditions]
     n_trials, n_features, n_time = X.shape
     if any(c.shape[0] != n_trials for c in conditions):
         raise ValueError("each condition array must have length n_trials")
 
-    # 1. Lay out the condition grid. For each factor: its sorted distinct
-    #    values, and -- per trial -- which slot (0 .. n_values-1) along that
-    #    factor's axis the trial belongs to. Stacking the per-factor slots
-    #    gives every trial one coordinate in the grid, e.g. cell (0, 2) =
-    #    first level, third angle.
-    cond_values: list[list] = []
-    slot_per_factor: list[np.ndarray] = []
+    # Grid coordinates: each trial gets one slot per factor (its rank among that factor's
+    # sorted distinct values), so its cell is the tuple of slots, e.g. (0, 2).
+    cond_values, slots = [], []
     for c in conditions:
-        values, slots = np.unique(c, return_inverse=True)
+        values, slot = np.unique(c, return_inverse=True)
         cond_values.append(values.tolist())
-        slot_per_factor.append(slots)
+        slots.append(slot)
     cond_dims = tuple(len(v) for v in cond_values)
-    cell_of_trial = list(zip(*slot_per_factor))  # (n_trials,) tuples of ints
 
-    # 2. Group trial indices by grid cell. A cell with no trials simply never
-    #    appears here (and stays all-NaN in the tensor below).
     trials_by_cell: dict[tuple, list[int]] = {}
-    for trial, cell in enumerate(cell_of_trial):
+    for trial, cell in enumerate(zip(*slots)):
         trials_by_cell.setdefault(cell, []).append(trial)
     if not trials_by_cell:
         raise ValueError("no trials to fit")
 
-    # 3. Fill the tensor. trialX[:, :, *cell, :] holds every trial for one
-    #    cell, stacked on axis 0 and NaN-padded from that cell's own trial
-    #    count up to K, the largest cell.
+    # Empty cells stay all-NaN; others are NaN-padded up to K, the largest cell.
     K = max(len(t) for t in trials_by_cell.values())
     trialX = np.full((K, n_features, *cond_dims, n_time), np.nan)
     for cell, trials in trials_by_cell.items():
         trialX[: len(trials), :, *cell, :] = X[trials]
-
-    counts = {  # keyed by the real label values, not slot indices
+    counts = {
         tuple(cond_values[f][s] for f, s in enumerate(cell)): len(trials)
         for cell, trials in trials_by_cell.items()
     }
 
-    # 4. Condition mean, centered per feature. X_psth[feature, *cell, time] is
-    #    the mean over that cell's trials. A feature that comes out all-NaN
-    #    (dead channel, or every cell it appears in is empty) can't be
-    #    centered -- flag it and leave it NaN, rather than let numpy warn
-    #    cryptically and push NaN into the fit.
+    # Condition mean, centred per feature. A feature that is all-NaN (dead channel, or only
+    # in empty cells) cannot be centred: warn and leave it NaN rather than let numpy fail.
     with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", "Mean of empty slice", RuntimeWarning)
+        warnings.filterwarnings(
+            "ignore", "Mean of empty slice", RuntimeWarning
+        )
         X_psth = np.nanmean(trialX, axis=0)
         by_feature = X_psth.reshape(n_features, -1)
         dead = np.all(np.isnan(by_feature), axis=1)
@@ -270,44 +244,37 @@ def build_unbalanced_trial_tensor(
     return trialX, X_psth, cond_values, counts
 
 
-def rebalanced_noise_variance(trialX: np.ndarray, time_axis: int = -1) -> np.ndarray:
-    """Per-neuron noise variance, re-balanced so conditions count equally.
+def rebalanced_noise_variance(
+    trialX: np.ndarray, time_axis: int = -1
+) -> np.ndarray:
+    """Compute per-neuron noise variance with every condition cell weighted
+    equally (dpca.m 'averaged').
 
     Parameters
     ----------
-    trialX : ndarray
-        Single-trial data with the trial axis first, NaN-padded past each
-        condition's own trial count (as returned by
-        `build_unbalanced_trial_tensor`).
+    trialX : np.ndarray
+        NaN-padded single-trial data, trial axis first.
     time_axis : int, optional
-        Axis of `trialX` that indexes time, by default ``-1``.
+        Time axis of ``trialX`` (default is -1).
 
     Returns
     -------
-    ndarray, shape (n_features,)
-        Per-neuron noise variance.
-
-    Notes
-    -----
-    Sums squared trial-to-mean deviations over time first, divides by the
-    per-cell trial count, then sums (not averages) over the remaining
-    condition cells, so every cell contributes equally regardless of how many
-    trials it has. This is exactly ``dpca_getNoiseCovariance.m``'s
-    ``'averaged'`` branch::
-
-        Cnoise = diag(nansum(SSnoiseSumOverT ./ numOfTrials, 2))
-
-    i.e. ``SQT * Cnoise_tilde`` from the paper; the ``SQT`` and the paper's
-    ``1/SQT`` cancel algebraically, so what MATLAB actually computes and uses
-    is this unscaled sum.
+    np.ndarray
+        Noise variance, shape (n_features,).
     """
     X = np.nanmean(trialX, axis=0)  # PSTH
-    K = np.sum(~np.isnan(trialX), axis=0).astype(float)  # trials per neuron/cell/time
+    K = np.sum(~np.isnan(trialX), axis=0).astype(
+        float
+    )  # trials per neuron/cell/time
     K[K == 0] = np.nan
-    SS = np.nansum((trialX - X[None, ...]) ** 2, axis=0)  # summed sq. deviations per cell
+    SS = np.nansum(
+        (trialX - X[None, ...]) ** 2, axis=0
+    )  # summed sq. deviations per cell
 
     t_ax = time_axis if time_axis >= 0 else X.ndim + time_axis
-    SS_sumT = np.sum(SS, axis=t_ax).reshape(X.shape[0], -1)  # sum over time first
+    SS_sumT = np.sum(SS, axis=t_ax).reshape(
+        X.shape[0], -1
+    )  # sum over time first
     K_noT = np.take(K, 0, axis=t_ax).reshape(
         X.shape[0], -1
     )  # trial count is time-invariant
@@ -316,121 +283,30 @@ def rebalanced_noise_variance(trialX: np.ndarray, time_axis: int = -1) -> np.nda
         return np.nansum(SS_sumT / K_noT, axis=1)  # sum, not mean, over cells
 
 
-def fit_dpca_rebalanced(
-    dpca_obj: dPCA.dPCA,
-    X: np.ndarray,
-    trialX: np.ndarray,
-    lam: float | None = None,
-    random_state: int | np.random.Generator | None = None,
-) -> dPCA.dPCA:
-    """Refit ``dpca_obj.D`` / ``dpca_obj.P`` with the re-balanced ridge penalty.
-
-    Parameters
-    ----------
-    dpca_obj : dPCA.dPCA
-        A dPCA model that has already had ``.fit(X, trialX)`` called on it
-        (needed to populate ``.marginalizations`` / ``.n_components``). Its
-        ``.D`` / ``.P`` are overwritten in place.
-    X : ndarray, shape (n_features, *cond_dims, n_time)
-        Condition-mean data, as passed to ``dpca_obj.fit``.
-    trialX : ndarray
-        Single-trial NaN-padded data, as passed to ``dpca_obj.fit``.
-    lam : float, optional
-        Ridge weight. Defaults to ``dpca_obj.regularizer``.
-    random_state : int or numpy.random.Generator, optional
-        Seeds the per-marginalization `randomized_svd` calls for a
-        reproducible fit. ``None`` reproduces the pip package's own unseeded
-        behaviour.
-
-    Returns
-    -------
-    dPCA.dPCA
-        The same `dpca_obj`, mutated in place (also returned, for chaining).
-
-    Notes
-    -----
-    Replaces the plain ``lambda^2 * I`` the pip ``dPCA`` package uses
-    internally with ``Omega = diag(rebalanced_noise_variance(trialX)) +
-    lambda^2 * I``, matching ``dpca.m``'s actual closed-form solve::
-
-        C = Xmarg @ X.T @ inv(X @ X.T + Cnoise + (lambda*totalVar)^2 * I)
-
-    `fit_rebalanced_dpca` does the plain fit and this refit in one call.
-    """
-    n = X.shape[0]
-    Xcen = dpca_obj._zero_mean(X)
-    rX = Xcen.reshape(n, -1)
-
-    lam = dpca_obj.regularizer if lam is None else lam
-    lam2 = (
-        (lam * np.sum(rX**2)) ** 2 if lam else 0.0
-    )  # matches dPCA._fit's own convention
-    Omega = np.diag(rebalanced_noise_variance(trialX)) + lam2 * np.eye(n)
-
-    rng = np.random.default_rng(random_state)
-    P: dict[str, np.ndarray] = {}
-    D: dict[str, np.ndarray] = {}
-    for key, mX in dpca_obj._marginalize(Xcen).items():
-        mX = mX.reshape(n, -1)
-        C = mX @ rX.T @ np.linalg.inv(rX @ rX.T + Omega)
-        # A_RR = X_j X^T (XX^T + Omega)^-1 paper formula
-        nc = (
-            dpca_obj.n_components[key]
-            if isinstance(dpca_obj.n_components, dict)
-            else dpca_obj.n_components
-        )
-        U, _, _ = randomized_svd(
-            C @ rX,
-            n_components=nc,
-            n_iter=dpca_obj.n_iter,
-            random_state=int(rng.integers(1_000_000)),
-        )
-        P[key], D[key] = U, (U.T @ C).T
-
-    dpca_obj.P, dpca_obj.D = P, D
-    return dpca_obj
-
-
 def get_var_split(
     dpca_obj: dPCA.dPCA,
     X: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Per-component and per-marginalization variance explained, in percent.
+    """Compute percent variance explained per component and per
+    marginalization, sorted by component.
 
     Parameters
     ----------
     dpca_obj : dPCA.dPCA
-        Already fit (``.D`` / ``.P`` populated -- plain fit or after
-        `fit_dpca_rebalanced`).
-    X : ndarray, shape (n_features, *cond_dims, n_time)
-        The condition-mean data the model was fit on.
+        Fitted model with ``D`` and ``P`` populated.
+    X : np.ndarray
+        Condition means the model was fit on.
 
     Returns
     -------
-    componentVar : ndarray, shape (n_components_total,)
-        Percent of total PSTH variance per component, sorted descending.
-    margVar : ndarray, shape (n_marginalizations, n_components_total)
-        Percent of total variance each component explains within each
-        marginalization, in the same component order as `componentVar`.
-    whichMarg : ndarray, shape (n_components_total,)
-        Marginalization key each component was extracted for, in
-        `componentVar`'s order.
-    order : ndarray of int, shape (n_components_total,)
-        Index into the concatenated (unsorted) encoder/decoder columns that
-        produces `componentVar`'s order -- reuse it to reorder ``dpca_obj.D``
-        / ``dpca_obj.P`` / ``Z`` consistently with the variance ranking.
-
-    Notes
-    -----
-    Reproduces ``dpca_explainedVariance.m`` verbatim, with ``F`` / ``D`` the
-    stacked encoders (``dpca_obj.P``) / decoders (``dpca_obj.D``) across every
-    marginalization, ``Z = D.T @ X``, and ``Xmarg_j`` the j-th marginalization
-    of ``X``::
-
-        componentVar[i] = 1 - ||X - outer(F[:,i], Z[i,:])||^2 / totalVar
-        margVar[j, i]   = (||Xmarg_j||^2
-                           - ||Xmarg_j - outer(F[:,i], D[:,i].T @ Xmarg_j)||^2)
-                          / totalVar
+    componentVar : np.ndarray
+        Percent of total variance per component, descending.
+    margVar : np.ndarray
+        Percent per marginalization, shape (n_marg, n_components).
+    whichMarg : np.ndarray
+        Marginalization key of each component.
+    order : np.ndarray of int
+        Indices that sort the unsorted component columns.
     """
     keys = list(dpca_obj.marginalizations.keys())
     D = np.hstack([dpca_obj.D[k] for k in keys])
@@ -445,7 +321,8 @@ def get_var_split(
     componentVar = (
         np.array(
             [
-                1 - np.sum((Xflat - np.outer(F[:, i], Z[i, :])) ** 2) / totalVar
+                1
+                - np.sum((Xflat - np.outer(F[:, i], Z[i, :])) ** 2) / totalVar
                 for i in range(comps)
             ]
         )
@@ -467,64 +344,149 @@ def get_var_split(
     return componentVar[order], margVar[:, order], whichMarg[order], order
 
 
+def cumulative_explained_variance(
+    dpca_obj: dPCA.dPCA,
+    X: np.ndarray,
+    n_components: int | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute the cumulative % of ``X`` explained by the first q dPCA and PCA
+    components, as in Kobak et al. 2016 Figs 3-6c.
+
+    Parameters
+    ----------
+    dpca_obj : dPCA.dPCA
+        Fitted model with ``D`` and ``P`` populated.
+    X : np.ndarray
+        Centred condition means the model was fit on.
+    n_components : int, optional
+        Largest q (default is every dPCA component).
+
+    Returns
+    -------
+    dpca_cum : np.ndarray
+        % explained by the q strongest dPCA components, q = 1..n.
+    pca_cum : np.ndarray
+        % explained by the first q principal components, q = 1..n.
+    """
+    keys = list(dpca_obj.marginalizations)
+    F = np.hstack([dpca_obj.P[k] for k in keys])
+    D = np.hstack([dpca_obj.D[k] for k in keys])
+    Xf = X.reshape(X.shape[0], -1)
+    total_var = np.sum(Xf**2)
+
+    # first q components in get_var_split's order, reconstructed jointly
+    # (dPCA components are not orthogonal, so this is not a sum of single-component values)
+    order = get_var_split(dpca_obj, X)[3]
+    n = len(order) if n_components is None else min(n_components, len(order))
+    dpca_cum = (
+        np.array(
+            [
+                1
+                - np.sum(
+                    (Xf - F[:, order[:q]] @ (D[:, order[:q]].T @ Xf)) ** 2
+                )
+                / total_var
+                for q in range(1, n + 1)
+            ]
+        )
+        * 100
+    )
+
+    # PCA: the error of the first q PCs is the sum of the remaining squared singular values
+    s = np.linalg.svd(Xf, compute_uv=False)
+    pca_cum = np.cumsum(s**2)[:n] / total_var * 100
+    return dpca_cum, pca_cum
+
+
+def _residual_noise_ss(
+    X: np.ndarray, trialX: np.ndarray, time_axis: int = -1
+) -> float:
+    """Estimate the noise sum of squares left in ``X`` by finite-trial averaging
+    (Kobak et al. 2016's Theta).
+
+    Parameters
+    ----------
+    X : np.ndarray
+        Centred condition means, shape (n_features, *cond_dims, n_time).
+    trialX : np.ndarray
+        NaN-padded single-trial data, trial axis first.
+    time_axis : int, optional
+        Time axis of ``X`` (default is -1).
+
+    Returns
+    -------
+    float
+        Theta = sum over features of noise_var / mean trials per cell.
+    """
+    # Theta = sum_n noise_var_n / K_n; noise_var is already summed over cells and time, so
+    # only the division by K_n (mean trials per cell, empty cells counted as 0) remains
+    noise_var = rebalanced_noise_variance(trialX, time_axis=time_axis)
+    n_per_cell = np.sum(~np.isnan(trialX), axis=0).astype(float)
+    t_ax = time_axis if time_axis >= 0 else X.ndim + time_axis
+    kbar = (
+        np.take(n_per_cell, 0, axis=t_ax).reshape(X.shape[0], -1).mean(axis=1)
+    )
+    return float(np.sum(noise_var / kbar))
+
+
+def signal_variance_fraction(
+    X: np.ndarray, trialX: np.ndarray, time_axis: int = -1
+) -> float:
+    """Estimate the fraction of the variance of ``X`` that is signal rather than
+    averaging noise, 1 - Theta / ||X||^2 (Kobak et al. 2016 Figs 3-6c, dashed).
+
+    Parameters
+    ----------
+    X : np.ndarray
+        Centred condition means, shape (n_features, *cond_dims, n_time).
+    trialX : np.ndarray
+        NaN-padded single-trial data for the noise estimate.
+    time_axis : int, optional
+        Time axis of ``X`` (default is -1).
+
+    Returns
+    -------
+    float
+        Signal fraction of ``||X||^2``, between 0 and 1 (can dip below 0).
+    """
+    return 1 - _residual_noise_ss(X, trialX, time_axis) / float(np.sum(X**2))
+
+
 def noise_corrected_marg_var(
     dpca_obj: dPCA.dPCA,
     X: np.ndarray,
     trialX: np.ndarray,
     time_axis: int = -1,
 ) -> tuple[list[str], np.ndarray]:
-    """Per-marginalization *signal* variance fraction -- Kobak et al. 2016, Fig. 3-6d.
-
-    Each marginalization's full variance ``||X_f||^2`` (the marginalized data,
-    not dPCA's reduced-rank reconstruction) has its degrees-of-freedom share of
-    the residual finite-trial noise subtracted, then is normalised by the total
-    signal variance::
-
-        slice_f = (||X_f||^2 - Q_f) / (||X||^2 - Q)
-        Q_f     = K_f / (prod(cond_dims) * n_time - 1) * Q
-
-    ``Q`` is the total residual noise sum of squares carried into ``||X||^2`` by
-    averaging a finite number of trials (the dashed "signal variance" line of
-    Figs 3-6c). ``K_f`` is marginalization ``f``'s degrees of freedom:
-    ``n_time - 1`` for the pure-time marginalization, ``n_time *
-    prod_{i in f}(cond_dims[i] - 1)`` otherwise (e.g. for ``labels='lat'`` with
-    ``L`` levels, ``A`` angles: ``t`` -> ``T-1``, ``lt`` -> ``T(L-1)``, ``at``
-    -> ``T(A-1)``, ``lat`` -> ``T(L-1)(A-1)``). The ``K_f`` sum to
-    ``prod(cond_dims) * n_time - 1`` and the returned slices sum to 1.
+    """Compute each marginalization's noise-corrected signal-variance fraction
+    (Kobak et al. 2016).
 
     Parameters
     ----------
     dpca_obj : dPCA.dPCA
-        Fitted model. Only ``labels`` / ``marginalizations`` / ``_marginalize``
-        are used (not ``.D`` / ``.P``), so the plain and rebalanced fits give
-        the same result.
-    X : ndarray, shape (n_features, *cond_dims, n_time)
-        Centered condition-mean data.
-    trialX : ndarray
-        NaN-padded single-trial data, for the noise estimate.
+        Fitted model; only ``labels`` and marginalizations are used.
+    X : np.ndarray
+        Centred condition means, shape (n_features, *cond_dims, n_time).
+    trialX : np.ndarray
+        NaN-padded single-trial data for the noise estimate.
     time_axis : int, optional
-        Axis of `trialX` that indexes time, by default ``-1``.
+        Time axis of ``trialX`` (default is -1).
 
     Returns
     -------
     keys : list of str
-        Marginalization keys, in ``dpca_obj.marginalizations`` order.
-    signal_frac : ndarray, shape (n_marginalizations,)
-        Noise-corrected signal-variance fraction per marginalization (sums to 1).
+        Marginalization keys.
+    signal_frac : np.ndarray
+        Signal-variance fraction per key; sums to 1.
     """
     keys = list(dpca_obj.marginalizations)
     labels = dpca_obj.labels
     time_label = labels[-1]
 
     total_var = float(np.sum(X.reshape(X.shape[0], -1) ** 2))
-
-    # Q: residual noise sum of squares present in ||X||^2 from finite-trial
-    # averaging -- per-neuron noise variance, then divided by mean trials/cell.
-    noise_var = rebalanced_noise_variance(trialX, time_axis=time_axis)
-    n_per_cell = np.sum(~np.isnan(trialX), axis=0).astype(float)
-    t_ax = time_axis if time_axis >= 0 else X.ndim + time_axis
-    kbar = np.take(n_per_cell, 0, axis=t_ax).reshape(X.shape[0], -1).mean(axis=1)
-    Q = float(np.sum(noise_var / kbar))
+    Q = _residual_noise_ss(
+        X, trialX, time_axis
+    )  # Theta: averaging noise left in ||X||^2
 
     cond_dims = X.shape[1:-1]
     n_time = X.shape[-1]
@@ -536,7 +498,9 @@ def noise_corrected_marg_var(
         factor_letters = [c for c in key if c != time_label]
         if factor_letters:
             K_f = n_time * int(
-                np.prod([cond_dims[labels.index(c)] - 1 for c in factor_letters])
+                np.prod(
+                    [cond_dims[labels.index(c)] - 1 for c in factor_letters]
+                )
             )
         else:
             K_f = n_time - 1
@@ -547,43 +511,40 @@ def noise_corrected_marg_var(
 
 
 class RebalancedDPCA(dPCA.dPCA):
-    """`dPCA.dPCA` whose closed-form solve uses the rebalanced ridge.
+    """`dPCA.dPCA` whose closed-form solve uses the rebalanced ridge of dpca.m.
 
-    Every internal fit -- including the per-split refits inside
-    ``dPCA.dPCA.significance_analysis`` -- replaces the package's plain
-    ``lambda^2 * I`` penalty with ``Omega = diag(noise_var) + lambda^2 * I``,
-    the same penalty as `fit_dpca_rebalanced`. The package's significance
-    machinery is otherwise unchanged (train/test split, nearest-centroid
-    classification, label-shuffle null, ``n_consecutive`` denoising).
+    The penalty is ``Omega = diag(noise_var) + (lambda * totalVar)^2 * I``
+    instead of the package's plain identity term. Because ``_fit`` itself is
+    overridden, every fit the package runs internally -- the cross-validated
+    search when ``regularizer='auto'``, and the per-split refits inside
+    ``significance_analysis`` -- uses this penalty as well.
 
-    Constructor arguments are exactly ``dPCA.dPCA``'s (``labels``, ``join``,
-    ``n_components``, ``regularizer``, ``copy``, ``n_iter``). Set the extra
-    fields below as plain attributes after construction, the same way you set
-    ``dPCA.dPCA.protect``.
+    Usage is the package's: ``RebalancedDPCA(labels=..., ...).fit(X, trialX)``.
+    The two manual steps the package needs are done for you:
+
+    - ``noise_var`` is recomputed from ``trialX`` whenever a fit is given
+      ``trialX`` (i.e. every public ``fit(X, trialX)``). Internal refits get
+      no ``trialX`` and reuse it, so it stays fixed at the full-data value
+      across CV splits and significance splits -- test trials therefore help
+      set the penalty. This matches how dpca.m is normally used.
+    - ``protect`` is set to the time label, so CV splits never shuffle time
+      bins within a trial (the package leaves it ``None`` for 'auto').
 
     Attributes
     ----------
     noise_var : ndarray, shape (n_features,)
-        Per-feature noise variance added to the ridge, e.g.
-        ``rebalanced_noise_variance(trialX)`` on the full-session ``trialX``.
-        Held fixed across every split and shuffle. Must be assigned before any
-        fit or ``_fit`` raises.
+        Per-feature noise variance from `rebalanced_noise_variance`; set by
+        the last fit that was given ``trialX``.
     protect : list of str
-        ``dPCA.dPCA`` only sets this when ``regularizer='auto'``, so assign it
-        yourself (e.g. ``model.protect = ['t']``) before fitting.
-
-    See Also
-    --------
-    rebalanced_significance : wrapper that builds the tensors, sets
-        `noise_var` / `protect`, and calls ``significance_analysis``.
+        Axes kept intact when splitting trials; ``[labels[-1]]``.
 
     Notes
     -----
-    The explicit ``__init__`` (rather than ``*args``) and the ``self.join``
-    mirror are needed only to keep scikit-learn's estimator ``repr`` / cloning
-    happy: it forbids varargs in an estimator ``__init__`` and expects an
-    attribute matching every constructor argument, but ``dPCA.dPCA`` stores
-    ``join`` as ``self._join``.
+    The explicit ``__init__`` (rather than ``*args``) and the ``self.join`` /
+    ``self.random_state`` attributes only keep scikit-learn's estimator
+    ``repr`` / cloning happy: it forbids varargs in ``__init__`` and expects an
+    attribute per constructor argument, but ``dPCA.dPCA`` stores ``join`` as
+    ``self._join``.
     """
 
     noise_var: np.ndarray | None = None
@@ -596,7 +557,27 @@ class RebalancedDPCA(dPCA.dPCA):
         regularizer: float | str | None = None,
         copy: bool = True,
         n_iter: int = 0,
+        random_state: int | None = None,
     ) -> None:
+        """Initialise with ``dPCA.dPCA``'s arguments plus an SVD seed.
+
+        Parameters
+        ----------
+        labels : str, int or None, optional
+            Factor letters, time last (default is None).
+        join : dict, optional
+            Marginalizations to merge (default is None).
+        n_components : int or dict, optional
+            Components per marginalization (default is 10).
+        regularizer : float or str, optional
+            Ridge weight, or "auto" (default is None, i.e. 0).
+        copy : bool, optional
+            Passed to ``dPCA.dPCA`` (default is True).
+        n_iter : int, optional
+            Randomized-SVD power iterations (default is 0).
+        random_state : int, optional
+            Seed for the randomized SVD (default is None, unseeded).
+        """
         super().__init__(
             labels=labels,
             join=join,
@@ -605,47 +586,66 @@ class RebalancedDPCA(dPCA.dPCA):
             copy=copy,
             n_iter=n_iter,
         )
-        self.join = (
-            join  # base stores it as self._join; sklearn get_params wants self.join
-        )
+        self.join = join  # base stores it as self._join; sklearn get_params wants self.join
+        self.random_state = random_state
+        self.protect = [
+            self.labels[-1]
+        ]  # after super(): it resets protect to None for 'auto'
 
     def _fit(
         self, X, trialX=None, mXs=None, center=True, SVD=None, optimize=True
     ) -> None:
-        """Rebalanced closed-form solve; overrides ``dPCA.dPCA._fit``.
+        """Fit ``P`` and ``D`` with the rebalanced ridge, overriding the package.
 
-        Mirrors `fit_dpca_rebalanced`: ``C_key = Xmarg_key @ X.T @ inv(X @ X.T
-        + diag(noise_var) + lambda^2 * I)``, then a ``randomized_svd`` per
-        marginalization. Signature matches the parent so ``fit`` /
-        ``fit_transform`` / ``significance_analysis`` call it unchanged.
+        Parameters
+        ----------
+        X : np.ndarray
+            Condition means, shape (n_features, *cond_dims, n_time).
+        trialX : np.ndarray, optional
+            Single-trial data; refreshes ``noise_var`` when given.
+        mXs : dict, optional
+            Precomputed marginalizations of ``X`` (default is None).
+        center : bool, optional
+            Zero-mean ``X`` first (default is True).
+        SVD : object, optional
+            Unused; kept for the package's signature.
+        optimize : bool, optional
+            Run the lambda search when "auto" (default is True).
 
-        With ``regularizer='auto'`` the parent's cross-validated lambda search
-        (``_optimize_regularization``, plain-ridge CV, as ``dpca.m`` does) runs
-        once on the first fit, sets ``self.regularizer`` to a float, and every
-        later fit reuses it.
+        Raises
+        ------
+        ValueError
+            If no ``noise_var`` exists yet and ``trialX`` is None.
         """
-        if getattr(self, "opt_regularizer_flag", False) and optimize:
-            if trialX is None:
-                raise ValueError(
-                    "regularizer='auto' needs trialX for the cross-validated lambda search"
-                )
-            self._optimize_regularization(X, trialX)  # sets self.regularizer to a float
+        if trialX is not None:
+            self.noise_var = rebalanced_noise_variance(trialX)
         if self.noise_var is None:
-            raise AttributeError(
-                "RebalancedDPCA.noise_var must be set (e.g. rebalanced_noise_variance(trialX)) "
-                "before fitting"
+            raise ValueError(
+                "the first fit needs trialX, to estimate noise_var"
             )
+        if self.opt_regularizer_flag and optimize:
+            self._optimize_regularization(
+                X, trialX
+            )  # refits via _fit; sets self.regularizer
+
         n = X.shape[0]
         Xc = self._zero_mean(X) if center else X
         rX = Xc.reshape(n, -1)
-        lam2 = (self.regularizer * np.sum(rX**2)) ** 2 if self.regularizer else 0.0
-        inv = np.linalg.inv(rX @ rX.T + np.diag(self.noise_var) + lam2 * np.eye(n))
+        lam = self.regularizer
+        lam2 = (lam * np.sum(rX**2)) ** 2 if lam else 0.0
+        inv = np.linalg.inv(
+            rX @ rX.T + np.diag(self.noise_var) + lam2 * np.eye(n)
+        )
 
-        margs = mXs if mXs is not None else self._marginalize(Xc)
+        # one seed per fit, so a seeded model refits identically on every split
+        rng = np.random.default_rng(self.random_state)
         self.P, self.D = {}, {}
-        for key, mX in margs.items():
-            mX = mX.reshape(n, -1)
-            C = mX @ rX.T @ inv
+        for key, mX in (
+            mXs if mXs is not None else self._marginalize(Xc)
+        ).items():
+            C = (
+                mX.reshape(n, -1) @ rX.T @ inv
+            )  # A_RR = X_j X^T (X X^T + Omega)^-1
             nc = (
                 self.n_components[key]
                 if isinstance(self.n_components, dict)
@@ -655,6 +655,197 @@ class RebalancedDPCA(dPCA.dPCA):
                 C @ rX,
                 n_components=nc,
                 n_iter=self.n_iter,
-                random_state=np.random.randint(100_000),
+                random_state=int(rng.integers(1_000_000)),
             )
             self.P[key], self.D[key] = U, (U.T @ C).T
+
+
+def fit_dpca(
+    X: np.ndarray,
+    codes: Sequence[int] | np.ndarray,
+    factors: Sequence[str],
+    labels: str,
+    regularizer: float | str,
+    n_components: int,
+    random_state: int | None = None,
+) -> tuple[
+    RebalancedDPCA, np.ndarray, np.ndarray, list[list], dict[tuple, int]
+]:
+    """Fit the rebalanced dPCA to trials labelled by solenoid code.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        Trials, shape (n_trials, n_features, n_time).
+    codes : sequence of int or np.ndarray
+        Solenoid-direction code of each trial, shape (n_trials,).
+    factors : sequence of str
+        Keys of ``CONDITION_FACTORS``, one per non-time letter of ``labels``.
+    labels : str
+        dPCA labels, ending in the time letter, e.g. "lpt".
+    regularizer : float or str
+        Ridge weight, or "auto" to search for it by cross-validation.
+    n_components : int
+        Components per marginalization.
+    random_state : int, optional
+        Seed for the randomized SVD (default is None, unseeded).
+
+    Returns
+    -------
+    model : RebalancedDPCA
+        The fitted model.
+    X_psth : np.ndarray
+        Centred condition means.
+    trialX : np.ndarray
+        NaN-padded single-trial tensor.
+    cond_values : list of list
+        Sorted distinct labels of each factor.
+    counts : dict of {tuple : int}
+        Trial count per populated condition cell.
+    """
+    trialX, X_psth, cond_values, counts = build_unbalanced_trial_tensor(
+        X, conditions_from_codes(codes, factors)
+    )
+    model = RebalancedDPCA(
+        labels=labels,
+        regularizer=regularizer,
+        join=default_join(labels),
+        n_components=n_components,
+        random_state=random_state,
+    )
+    model.fit(X_psth, trialX)
+    return model, X_psth, trialX, cond_values, counts
+
+
+def shuffled_variance(
+    X: np.ndarray,
+    codes: Sequence[int] | np.ndarray,
+    factors: Sequence[str],
+    labels: str,
+    regularizer: float,
+    n_components: int,
+    random_state: int | None = None,
+) -> np.ndarray:
+    """Refit with the given (e.g. shuffled) codes and return each
+    marginalization's variance.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        Trials, shape (n_trials, n_features, n_time).
+    codes : sequence of int or np.ndarray
+        Solenoid-direction codes to fit with, shape (n_trials,).
+    factors : sequence of str
+        Keys of ``CONDITION_FACTORS``, one per non-time letter of ``labels``.
+    labels : str
+        dPCA labels, ending in the time letter, e.g. "lpt".
+    regularizer : float
+        Ridge weight, already resolved (not "auto").
+    n_components : int
+        Components per marginalization.
+    random_state : int, optional
+        Seed for the randomized SVD (default is None, unseeded).
+
+    Returns
+    -------
+    np.ndarray
+        Percent of total variance per marginalization, shape (n_marg,).
+    """
+    model, X_psth, *_ = fit_dpca(
+        X, codes, factors, labels, regularizer, n_components, random_state
+    )
+    return get_var_split(model, X_psth)[1].sum(axis=1)
+
+
+def noise_floor(
+    X: np.ndarray,
+    codes: Sequence[int] | np.ndarray,
+    factors: Sequence[str],
+    labels: str,
+    regularizer: float | str = "auto",
+    n_components: int = 10,
+    n_shuffles: int = 1000,
+    seed: int = 0,
+    n_jobs: int = -1,
+) -> tuple[dict, dict]:
+    """Compare each marginalization's variance with a label-shuffle null,
+    searching lambda once on the real data.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        Trials, shape (n_trials, n_features, n_time).
+    codes : sequence of int or np.ndarray
+        Solenoid-direction code of each trial, shape (n_trials,).
+    factors : sequence of str
+        Keys of ``CONDITION_FACTORS``, one per non-time letter of ``labels``.
+    labels : str
+        dPCA labels, ending in the time letter, e.g. "lpt".
+    regularizer : float or str, optional
+        Ridge weight, or "auto" for the CV search (default is "auto").
+    n_components : int, optional
+        Components per marginalization (default is 10).
+    n_shuffles : int, optional
+        Number of label permutations (default is 1000).
+    seed : int, optional
+        Seed for the permutations and the SVD (default is 0).
+    n_jobs : int, optional
+        Parallel workers for the shuffles (default is -1, all cores).
+
+    Returns
+    -------
+    stats : dict
+        keys, observed, signal_frac, null, null_median, null_p95, p
+        (``(1 + #{null >= obs}) / (n_shuffles + 1)``), z
+        (``(obs - null.mean) / null.std``), n_trials, cell_counts,
+        regularizer_used.
+    fit : dict
+        dpca, X_psth, trialX, codes, cond_values and config.
+    """
+    model, X_psth, trialX, cond_values, counts = fit_dpca(
+        X, codes, factors, labels, regularizer, n_components, random_state=seed
+    )
+    reg = float(model.regularizer)  # i will reuse lambda in the null
+    observed = get_var_split(model, X_psth)[1].sum(axis=1)
+
+    rng = np.random.default_rng(seed)
+    perms = [rng.permutation(codes) for _ in range(n_shuffles)]
+    null = np.array(
+        Parallel(n_jobs=n_jobs, inner_max_num_threads=1)(
+            delayed(shuffled_variance)(
+                X, perm, factors, labels, reg, n_components, seed
+            )
+            for perm in perms
+        )
+    )
+
+    stats = dict(
+        keys=np.array(list(model.marginalizations)),
+        observed=observed,
+        signal_frac=noise_corrected_marg_var(model, X_psth, trialX)[1],
+        null=null,
+        null_median=np.median(null, axis=0),
+        null_p95=np.percentile(null, 95, axis=0),
+        p=(1 + (null >= observed).sum(axis=0)) / (n_shuffles + 1),
+        z=(observed - null.mean(axis=0)) / null.std(axis=0),
+        n_trials=len(codes),
+        cell_counts=np.array(sorted(counts.values())),
+        regularizer_used=reg,
+    )
+    fit = dict(
+        dpca=model,
+        X_psth=X_psth,
+        trialX=trialX,
+        codes=np.asarray(codes),
+        cond_values=cond_values,
+        config=dict(
+            factors=list(factors),
+            labels=labels,
+            regularizer=regularizer,
+            regularizer_used=reg,
+            n_components=n_components,
+            n_shuffles=n_shuffles,
+            seed=seed,
+        ),
+    )
+    return stats, fit

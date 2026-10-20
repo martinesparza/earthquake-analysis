@@ -8,33 +8,37 @@ from tqdm import tqdm
 
 
 def participation_ratio(explained_variances):
-    """
-    Estimate the number of "important" components based on explained variances
+    """Estimate dimensionality as (sum of variances)^2 / sum of squared
+    variances.
 
     Parameters
     ----------
-    explained_variances : 1D np.ndarray
-        explained variance per dimension
+    explained_variances : np.ndarray
+        1D explained variance per dimension.
 
     Returns
     -------
-    dimensionality estimated using participation ratio formula
+    float
+        Participation-ratio dimensionality.
     """
     return np.sum(explained_variances) ** 2 / np.sum(explained_variances**2)
 
 
 def pca_pr(arr, n_components=None):
-    """
-    Estimate the data's dimensionality using PCA and participation ratio
+    """Estimate dimensionality as the participation ratio of PCA explained
+    variances.
 
     Parameters
     ----------
-    arr : 2D array
-        n_samples x n_features data
+    arr : np.ndarray
+        Data, shape (n_samples, n_features).
+    n_components : int, optional
+        Components fitted (default is all features).
 
     Returns
     -------
-    estimated dimensionality
+    float
+        Estimated dimensionality.
     """
     if n_components is None:
         n_components = arr.shape[-1]
@@ -44,22 +48,22 @@ def pca_pr(arr, n_components=None):
 
 
 def geodesic_dist_matrix(X, n_neighbors=15, n_jobs=-1):
-    """
-    Estimate a geodesic distance matrix using nearest neighbors
+    """Estimate geodesic distances over a nearest-neighbour graph, joining
+    disconnected components.
 
     Parameters
     ----------
-    X : 2D array
-        n_samples x n_features data
-    n_neighbors : int, default 15
-        number of nearest neighbors
-    n_jobs : int, default -1
-        number of cores to use for nearest neighbors calculation
-        -1 is use all available
+    X : np.ndarray
+        Data, shape (n_samples, n_features).
+    n_neighbors : int, optional
+        Neighbours per point (default is 15).
+    n_jobs : int, optional
+        Cores for neighbour search; -1 uses all (default is -1).
 
     Returns
     -------
-    estimated dimensionality
+    np.ndarray
+        Geodesic distances, shape (n_samples, n_samples).
     """
     # borrowed from sklearn.manifold.Isomap to skip the kernel PCA embedding part because we only need the distance matrix
     nbrs_ = NearestNeighbors(
@@ -106,17 +110,18 @@ def geodesic_dist_matrix(X, n_neighbors=15, n_jobs=-1):
 
 
 def geodesic_to_gram_matrix(D):
-    """
-    Transform the geodesic distance matrix to a Gram matrix used in kernel PCA
+    """Convert geodesic distances to a double-centred Gram matrix (-D^2 / 2)
+    for kernel PCA.
 
     Parameters
     ----------
-    D : 2D np.array
-        geodesic distance matrix
+    D : np.ndarray
+        Geodesic distance matrix, shape (n, n).
 
     Returns
     -------
-    K : 2D np.array
+    np.ndarray
+        Centred Gram matrix, shape (n, n).
     """
     G = D**2
     G *= -0.5
@@ -126,24 +131,22 @@ def geodesic_to_gram_matrix(D):
 
 
 def isomap_pr(X, n_neighbors=15, n_jobs=-1):
-    """
-    Estimate the data's dimensionality using participation ratio. We compute eigenvalues
-    using kPCA on the geodesic distance matrix from the Isomap algo. The kernel used is
-    meant to recover inner products from the distances matrix by double centering.
+    """Estimate dimensionality as the participation ratio of Isomap kernel
+    eigenvalues.
 
     Parameters
     ----------
-    X : 2D array
-        n_samples x n_features data
-    n_neighbors : int, default 15
-        number of nearest neighbors to estimate the geodesic distances
-    n_jobs : int, default -1
-        number of cores to use for nearest neighbors calculation
-        -1 is use all available
+    X : np.ndarray
+        Data, shape (n_samples, n_features).
+    n_neighbors : int, optional
+        Neighbours for geodesic distances (default is 15).
+    n_jobs : int, optional
+        Cores for neighbour search; -1 uses all (default is -1).
 
     Returns
     -------
-    estimated dimensionality
+    float
+        Estimated dimensionality.
     """
     G = geodesic_dist_matrix(X, n_neighbors=n_neighbors, n_jobs=n_jobs)
 
@@ -155,16 +158,22 @@ def isomap_pr(X, n_neighbors=15, n_jobs=-1):
 
 
 def normalised_components_for_vaf(arr, vaf=0.80, n_components=None):
-    """
-    Calculate the minimum number of components required to reach the specified VAF threshold.
+    """Return the fraction of PCA components needed to reach a cumulative
+    variance threshold.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
+    arr : np.ndarray
+        Data, shape (n_samples, n_features).
+    vaf : float, optional
+        Target cumulative variance fraction (default is 0.80).
+    n_components : int, optional
+        Components fitted (default is all features).
 
-    Returns:
-    --------
-    int
-        Number of components needed to reach or exceed the threshold.
+    Returns
+    -------
+    float
+        Components needed divided by ``n_components``.
     """
     if n_components is None:
         n_components = arr.shape[-1]
@@ -178,6 +187,29 @@ def normalised_components_for_vaf(arr, vaf=0.80, n_components=None):
 def get_pr_for_subsets_of_neurons(
     arr, n_iter=5, step=10, linear=True, verbose=False, n_neighbors=15
 ):
+    """Compute the participation ratio on random neuron subsets of growing size
+    (drawn with replacement).
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        Data, shape (n_samples, n_neurons).
+    n_iter : int, optional
+        Random draws per subset size (default is 5).
+    step : int, optional
+        Increase in subset size, starting at 5 (default is 10).
+    linear : bool, optional
+        PCA ratio if True, else Isomap (default is True).
+    verbose : bool, optional
+        Print each subset size (default is False).
+    n_neighbors : int, optional
+        Isomap neighbours (default is 15).
+
+    Returns
+    -------
+    np.ndarray
+        Participation ratios, shape (n_sizes, n_iter).
+    """
     results = []
     for num_neurons in tqdm(np.arange(5, arr.shape[1] + 1, step)):
         if verbose:
@@ -196,6 +228,27 @@ def get_pr_for_subsets_of_neurons(
 
 
 def get_pcs_percentVAF_subsets_neurons(arr, niter=5, linear=True, verbose=False, vaf=0.8):
+    """Compute normalised components-for-VAF on random neuron subsets of size
+    5, 15, 25, ... (drawn with replacement).
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        Data, shape (n_samples, n_neurons).
+    niter : int, optional
+        Random draws per subset size (default is 5).
+    linear : bool, optional
+        Unused (default is True).
+    verbose : bool, optional
+        Print each subset size (default is False).
+    vaf : float, optional
+        Target cumulative variance fraction (default is 0.8).
+
+    Returns
+    -------
+    np.ndarray
+        Normalised component counts, shape (n_sizes, niter).
+    """
     results = []
     for num_neurons in np.arange(5, arr.shape[1] + 1, 10):
         if verbose:

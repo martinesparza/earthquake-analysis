@@ -232,6 +232,7 @@ def drop_unsteady_running_trials(
     otsu_thresh = compute_otsu_thresh_td(trial_td)
 
     keep = np.ones(len(td), dtype=bool)
+    n_slow, n_high_cv, n_both = 0, 0, 0
     for pos, row in zip(np.flatnonzero(is_trial), trial_td.itertuples()):
         vel = np.gradient(row.bhv, axis=0)
         speed = np.linalg.norm(vel, axis=1)[
@@ -239,11 +240,21 @@ def drop_unsteady_running_trials(
         ]
         mean_speed = speed.mean()
         cv = speed.std() / mean_speed
-        keep[pos] = (mean_speed > otsu_thresh) and (cv <= cv_thresh)
+        slow = not (mean_speed > otsu_thresh)
+        high_cv = not (cv <= cv_thresh)
+        n_slow += slow
+        n_high_cv += high_cv
+        n_both += slow and high_cv
+        keep[pos] = not (slow or high_cv)
 
     n_dropped = is_trial.sum() - keep[is_trial].sum()
     print(
         f"drop_unsteady_running_trials: dropping {n_dropped} of {is_trial.sum()} trials ({n_dropped / is_trial.sum():.1%})"
+    )
+    # Breakdown: a trial can fail both criteria, so the two counts can sum to more than n_dropped
+    print(
+        f"  below otsu speed thresh: {n_slow}  |  cv > {cv_thresh}: {n_high_cv}  |  "
+        f"both: {n_both}  |  speed only: {n_slow - n_both}  |  cv only: {n_high_cv - n_both}"
     )
 
     return td[keep]

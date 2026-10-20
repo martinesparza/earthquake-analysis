@@ -171,3 +171,4 @@ across-sessions/*/data
 #github
 .github/
 .claude/
+.ruff_cache

@@ -15,6 +15,25 @@ import tools.kinematics as kin
 def _insert_nans_and_extend_to_spikes_shape_inplace(
     df, idx_col, value_col, ref_col
 ):
+    """Fill dropped samples of a field with NaN and pad it to ``ref_col``
+    length, in place.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Trial data; ``idx_col`` and ``value_col`` are overwritten.
+    idx_col : str
+        Column of sample-index vectors.
+    value_col : str
+        Column of values aligned to ``idx_col``.
+    ref_col : str
+        Column whose first dimension sets the padded length.
+
+    Returns
+    -------
+    pd.DataFrame
+        Always empty; the result is the in-place edit of ``df``.
+    """
     new_rows = []
 
     for i, row in df.iterrows():
@@ -61,19 +80,33 @@ def preprocess(
     combine_time_bins=True,
     std=0.05,
 ) -> pd.DataFrame:
-    """
-    Preprocessing steps to manipulate trial data structure
+    """Drop low-firing neurons, select and bin trials, and turn spikes into
+    smoothed rates.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Trial data structure of a session
+        Session trial data; repaired fields are edited in place.
+    only_trials : bool, optional
+        Keep only 'trial' rows (default is True).
+    trial_selection_criteria : list of str, optional
+        Extra ``pyal.select_trials`` queries (default is None).
+    repair_time_varying_fields : list of str, optional
+        Field names without ``idx_``/``values_`` prefix (default is None).
+    combine_time_bins : bool, optional
+        Combine 10 ms bins to ``Params.BIN_SIZE`` (default is True).
+    std : float, optional
+        Smoothing kernel std in seconds (default is 0.05).
 
     Returns
     -------
-    df : pd. DataFrame
-        Trial data with operations performed
+    pd.DataFrame
+        Table with rates, ``sol_level_id`` and ``sol_contra_ipsi``.
 
+    Raises
+    ------
+    AssertionError
+        If ``combine_time_bins`` and any ``bin_size`` is not 0.01.
     """
     spikes_columns = [col for col in df.columns if col.endswith("spikes")]
     if repair_time_varying_fields is not None:
@@ -148,36 +181,34 @@ def load_and_preprocess_trials_from_sess(
     run_pca=True,
     rates=True,
     exclude_first_free_from_pca=True,
-    cv_thresh=0.225,
+    cv_thresh=0.255,
 ):
-    """
-    Full pipeline for a session (drop-before-compute ordering):
-      1. Load raw pyalData
-      2. Preprocess (remove low-firing neurons, keep 10 ms bins)
-      3. Fit PCA on all rows except the first (free locomotion period); this
-         also drops that first row from `df` for every step below
-      4. Drop unsteady 'trial' rows (immobile or high-CV pre-perturbation
-         running, via `kin.drop_unsteady_running_trials`) *before* computing
-         the perturbation metric, so the Welch/Morlet power estimate isn't
-         contaminated by unsteady running. Only runs if behavioural columns
-         are present (checked via `"shoulder_center" in df.columns`);
-         `intertrial`/`free` rows are left untouched.
-      5. Compute the perturbation metric on the reduced table
-         (`kin.compute_perturb_score` -> `power`, `phases`, `perturb_score`
-         per trial); skipped, with a warning, if it raises or if no
-         behavioural columns were found in step 4.
-      6. Add `perturb_score_mean` / `perturb_score_log_sum` summary columns.
+    """Load a session, run PCA, drop unsteady trials, then add perturbation
+    scores (skipped on failure).
 
-    Unlike `load_and_process_session`, this does not restrict the returned
-    table to `trial_name == 'trial'` or sort by disturbance -- it returns the
-    full table (all trial types, minus dropped unsteady trials) with the
-    added perturbation-score columns.
+    Parameters
+    ----------
+    session : str
+        Session name, e.g. "M061_2025_03_04_10_00".
+    data_dir : str, optional
+        Data root (default is "/mnt/mouse-data-london/proc/").
+    bhv_fields : list of str, optional
+        Keypoints for ``bhv`` and the score (default is oscillating keypoints).
+    std : float, optional
+        Smoothing kernel std in seconds (default is 0.05).
+    run_pca : bool, optional
+        Add PCA columns (default is True).
+    rates : bool, optional
+        PCA on rates if True, else on spikes (default is True).
+    exclude_first_free_from_pca : bool, optional
+        Drop the first free-locomotion row before PCA (default is True).
+    cv_thresh : float, optional
+        Max running-speed CV for a kept trial (default is 0.255).
 
     Returns
     -------
-    df : pd.DataFrame  session table with PCA-reduced rates, unsteady trials
-         dropped, and perturb_score / perturb_score_mean / perturb_score_log_sum
-         columns added.
+    pd.DataFrame
+        All row types, with PCA and ``perturb_score*`` columns when computed.
     """
 
     # 1 & 2 — load + preprocess
@@ -244,22 +275,22 @@ def load_and_preprocess_trials_from_sess(
 def _drop_unperturbed_trials(
     df_tr: pd.DataFrame, dstrb_idx: np.ndarray, thresh_val: float = -2.0
 ) -> pd.DataFrame:
-    """
-    Keep only trials with a strong mechanical perturbation.
-
-    A trial is kept if it satisfies BOTH:
-      - its disturbance rank falls below the SEM-based threshold, AND
-      - its disturb_mean exceeds thresh_val
+    """Keep trials with ``disturb_mean`` below minus its SEM and above
+    ``thresh_val``.
 
     Parameters
     ----------
-    df_tr      : trial DataFrame with a 'disturb_mean' column
-    dstrb_idx  : argsort indices (ascending disturbance) from load_and_process_session
-    thresh_val : hard lower bound on disturb_mean (default -2.0)
+    df_tr : pd.DataFrame
+        Trial table with a ``disturb_mean`` column.
+    dstrb_idx : np.ndarray
+        Ascending argsort of ``disturb_mean``.
+    thresh_val : float, optional
+        Hard lower bound on ``disturb_mean`` (default is -2.0).
 
     Returns
     -------
-    Filtered DataFrame.
+    pd.DataFrame
+        Kept rows of ``df_tr``.
     """
     disturb_vals = df_tr["disturb_mean"].values
     threshold = -scipy.stats.sem(disturb_vals)
@@ -288,44 +319,41 @@ def drop_unperturbed_or_stopped_trials(
     stat="sem",
     return_count=False,
 ) -> pd.DataFrame:
-    """
-    Drop trials that don't show a genuine perturbation response: either
-    'unperturbed' (no confident post-perturbation power decrease) or
-    'stopped' (an extreme power drop consistent with the animal halting
-    outright, rather than a graded gait disruption).
-
-    For each trial, `field_sem` (`perturb_score`) is a (n_keypoints,) array.
-    We compute:
-        mean = perturb_score.mean()
-        sem  = perturb_score.std() / sqrt(n_keypoints)   (or std, via `stat`)
-
-    A trial is kept only when BOTH:
-      - mean + sem < 0                    ('unperturbed' check -- the
-                                             ±1 SEM/STD interval lies entirely
-                                             below zero, so the power drop
-                                             isn't just noise)
-      - perturb_score_mean > thresh_val   ('stopped' check -- a hard lower
-                                             bound excluding extreme outliers
-                                             more likely caused by the animal
-                                             stopping outright than by a
-                                             modulated gait response)
+    """Keep trials whose score mean plus SEM/STD is below zero and whose mean
+    exceeds ``thresh_val``.
 
     Parameters
     ----------
-    trial_td   : pd.DataFrame  trial table with `field_sem` / `field_val`
-                 columns (defaults: 'perturb_score', 'perturb_score_mean').
-    thresh_val : float          hard lower bound on `field_val` (default -2).
-    field_sem  : str            per-keypoint array column used for the
-                 SEM/STD check.
-    field_val  : str            scalar column used for the hard-floor check.
-    stat       : "sem" | "std"  which statistic pushes the mean below zero.
+    trial_td : pd.DataFrame
+        Trial table with ``field_sem`` and ``field_val`` columns.
+    thresh_val : float, optional
+        Floor on ``field_val``, dropping stopped trials (default is -2).
+    field_sem : str, optional
+        Per-keypoint array column (default is "perturb_score").
+    field_val : str, optional
+        Scalar column for the floor (default is "perturb_score_mean").
+    stat : {"sem", "std"}, optional
+        Spread added to the mean (default is "sem").
+    return_count : bool, optional
+        Also return the two boolean masks (default is False).
 
     Returns
     -------
-    Filtered DataFrame.
+    pd.DataFrame
+        Kept rows of ``trial_td``.
+    by_sem : pd.Series of bool
+        Per-trial SEM/STD check; only if ``return_count``.
+    by_value : pd.Series of bool
+        Per-trial floor check; only if ``return_count``.
+
+    Raises
+    ------
+    ValueError
+        If ``stat`` is not "sem" or "std".
     """
 
     def _sem_crosses(arr):
+        """Return True if ``mean + SEM`` of a non-empty array is below zero."""
         if not isinstance(arr, np.ndarray) or arr.size == 0:
             return False
         mean = arr.mean()
@@ -333,6 +361,7 @@ def drop_unperturbed_or_stopped_trials(
         return (mean + sem) < 0
 
     def _std_crosses(arr):
+        """Return True if ``mean + STD`` of a non-empty array is below zero."""
         if not isinstance(arr, np.ndarray) or arr.size == 0:
             return False
         return (arr.mean() + arr.std()) < 0
@@ -371,29 +400,34 @@ def load_sessions_for_trial_analyses(
     std=0.05,
     std_dropping=True,
 ) -> dict[str, dict | None]:
-    """
-    Load, preprocess and slice a list of sessions into a ready-to-analyse dict.
-
-    For each session:
-      1. load_and_process_session  →  df_tr, dstrb_idx
-      2. trial dropping            →  df_design
-         - use_sem_dropping=False (default): drop_unperturbed_trials (rank + hard floor)
-         - use_sem_dropping=True           : drop_trials_sem_crosses_zero (per-trial SEM + hard floor)
-      3. pyal.restrict_to_interval →  perturb_td  (window: rel_start..rel_end bins)
+    """Load and window sessions around ``idx_sol_on``; returns None for all, as
+    it calls undefined functions.
 
     Parameters
     ----------
-    sessions         : list of session strings, e.g. ['M061_2025_03_04_10_00', ...]
-    data_dir         : path to raw data directory
-    rel_start        : start bin relative to idx_sol_on (default -200 = -2 s at 10 ms)
-    rel_end          : end bin relative to idx_sol_on   (default  300 = +3 s at 10 ms)
-    thresh_val       : hard lower bound on disturb_mean passed to the dropping function
-    use_sem_dropping : if True, use drop_trials_sem_crosses_zero instead of drop_unperturbed_trials
+    sessions : list of str
+        Session names.
+    data_dir : str, optional
+        Data root (default is "/data/bnd-data/raw/").
+    rel_start : int, optional
+        Window start in bins from ``idx_sol_on`` (default is -200).
+    rel_end : int, optional
+        Window end in bins from ``idx_sol_on`` (default is 300).
+    thresh_val : float, optional
+        Hard floor on ``disturb_mean`` (default is -2).
+    use_sem_dropping : bool, optional
+        SEM-based instead of rank-based dropping (default is True).
+    rates : bool, optional
+        Passed to the session loader (default is True).
+    std : float, optional
+        Smoothing kernel std in seconds (default is 0.05).
+    std_dropping : bool, optional
+        Passed as ``std=`` to the SEM dropper (default is True).
 
     Returns
     -------
-    dict  {session: {'td': perturb_td} | None}
-          None indicates the session failed to load.
+    dict of {str : dict or None}
+        Session to ``{"td": windowed table}``, or None on failure.
     """
 
     results = {}

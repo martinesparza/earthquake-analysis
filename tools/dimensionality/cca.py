@@ -9,19 +9,30 @@ from tools.params import Params
 
 
 def canoncorr(X: np.array, Y: np.array, fullReturn: bool = False) -> np.array:
-    """
-    Canonical Correlation Analysis (CCA)
-    line-by-line port from Matlab implementation of `canoncorr`
-    X,Y: (samples/observations) x (features) matrix, for both: X.shape[0] >> X.shape[1]
-    fullReturn: whether all outputs should be returned or just `r` be returned (not in Matlab)
+    """Run canonical correlation analysis (line-by-line port of MATLAB
+    ``canoncorr``).
 
-    returns: A,B,r,U,V
-    A,B: Canonical coefficients for X and Y
-    U,V: Canonical scores for the variables X and Y
-    r:   Canonical correlations
+    Parameters
+    ----------
+    X : np.ndarray
+        Observations x features, with many more rows than columns.
+    Y : np.ndarray
+        Observations x features, with many more rows than columns.
+    fullReturn : bool, optional
+        Return all outputs instead of only ``r`` (default is False).
 
-    Signature:
-    A,B,r,U,V = canoncorr(X, Y)
+    Returns
+    -------
+    r : np.ndarray
+        Canonical correlations; the only output unless ``fullReturn``.
+    A : np.ndarray
+        Canonical coefficients for X; only if ``fullReturn``.
+    B : np.ndarray
+        Canonical coefficients for Y; only if ``fullReturn``.
+    U : np.ndarray
+        Canonical scores for X; only if ``fullReturn``.
+    V : np.ndarray
+        Canonical scores for Y; only if ``fullReturn``.
     """
     n, p1 = X.shape
     p2 = Y.shape[1]
@@ -88,7 +99,23 @@ def canoncorr(X: np.array, Y: np.array, fullReturn: bool = False) -> np.array:
 
 
 def get_ccs_between_two_areas_from_df(df, area1, area2):
+    """Compute canonical correlations between two areas' PCA rates concatenated
+    over rows.
 
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Data with ``<area>_rates_pca`` columns.
+    area1 : str
+        First area name.
+    area2 : str
+        Second area name.
+
+    Returns
+    -------
+    np.ndarray
+        Canonical correlations from ``canoncorr``.
+    """
     data1, data2 = df[f"{area1}_rates_pca"].values, df[f"{area2}_rates_pca"].values
     data1, data2 = np.concatenate(data1), np.concatenate(data2)
     ccs = canoncorr(data1, data2)
@@ -98,6 +125,22 @@ def get_ccs_between_two_areas_from_df(df, area1, area2):
 
 # Function to roll the arrays
 def _roll_array(arr, shift, axis=0):
+    """Circularly roll an array along an axis.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        Array to roll.
+    shift : int
+        Number of samples to roll.
+    axis : int, optional
+        Axis to roll along (default is 0).
+
+    Returns
+    -------
+    np.ndarray
+        Rolled array.
+    """
     return np.roll(arr, shift=shift, axis=axis)  # Rolling along the time axis
 
 
@@ -110,26 +153,37 @@ def compute_shifted_cca_between_areas(
     shift_step=0.05,
     n_components=10,
 ):
-    """Computes CCAs between areas by applying time shifts.
-
-    Assumes you are providing a dataframe with trials only
+    """Compute mean canonical correlations 2-4 per time shift (no-op: it rolls
+    ``_rates`` but CCA reads ``_rates_pca``).
 
     Parameters
     ----------
     df : pd.DataFrame
-        trialdata with trials only
+        Trial-only data with ``_rates`` and ``_rates_pca`` columns.
     area_to_shift : str
-        area to shift
-    area_to_compare : _type_
-        area to compare
+        Area whose rates are rolled.
+    area_to_compare : str
+        Area it is compared against.
     shift_start : float, optional
-        values from which to start in seconds, by default 0.5
+        First shift in seconds (default is -0.5).
     shift_end : float, optional
-        values from which to end in seconds, by default 0.5
+        Last shift, exclusive, in seconds (default is 0.5).
     shift_step : float, optional
-        values for stepping t in seconds, by default 0.1
+        Shift step in seconds, at least one bin (default is 0.05).
     n_components : int, optional
-        components used for CCA, by default 10
+        Unused (default is 10).
+
+    Returns
+    -------
+    ccs_time_shifted : list of float
+        Mean of canonical correlations 2-4, one per shift.
+    shifts_s : np.ndarray
+        Shifts in seconds.
+
+    Raises
+    ------
+    ValueError
+        If ``shift_step`` is smaller than ``Params.BIN_SIZE``.
     """
 
     if shift_step / Params.BIN_SIZE < 1:

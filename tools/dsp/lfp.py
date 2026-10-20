@@ -16,16 +16,24 @@ from scipy.signal import (
 def sos_bandpass_filter(
     data: np.array, fs: float, freqs: tuple, order: int = 4
 ):
-    """A forward-backward digital filter using cascaded second-order sections.
+    """Band-pass filter along axis 0 with a zero-phase (forward-backward)
+    Butterworth filter.
 
-    Args:
-        data (np.array): Time x channels
-        fs (float): _description_
-        freqs (tuple): _description_
-        order (int, optional): _description_. Defaults to 4.
+    Parameters
+    ----------
+    data : np.ndarray
+        Signal, shape (T, n_channels).
+    fs : float
+        Sampling rate in Hz.
+    freqs : tuple of float
+        Pass band (low, high) in Hz.
+    order : int, optional
+        Butterworth order per pass (default is 4).
 
-    Returns:
-        _type_: _description_
+    Returns
+    -------
+    np.ndarray
+        Filtered signal, same shape as ``data``.
     """
 
     low, high = freqs
@@ -35,13 +43,20 @@ def sos_bandpass_filter(
 
 
 def compute_hilbert_power(x):
-    """Extracts power from array using hilbert transform
+    """Compute instantaneous power and phase from the Hilbert analytic signal
+    along axis 0.
 
-    Args:
-        x (_type_): _description_
+    Parameters
+    ----------
+    x : np.ndarray
+        Real signal, shape (T,) or (T, n_channels).
 
-    Returns:
-        _type_: _description_
+    Returns
+    -------
+    power : np.ndarray
+        Squared analytic magnitude, same shape as ``x``.
+    phase : np.ndarray
+        Instantaneous phase in radians, same shape as ``x``.
     """
     analytic_signal = hilbert(x, axis=0)
     instantaneous_phase = np.angle(analytic_signal)
@@ -51,19 +66,46 @@ def compute_hilbert_power(x):
 def get_power_phase_in_freq_range(
     data: np.array, fs: float, freqs: tuple, order: int = 4
 ):
+    """Band-pass filter a signal, then return its Hilbert power and phase.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Signal, shape (T, n_channels).
+    fs : float
+        Sampling rate in Hz.
+    freqs : tuple of float
+        Pass band (low, high) in Hz.
+    order : int, optional
+        Butterworth order per pass (default is 4).
+
+    Returns
+    -------
+    power : np.ndarray
+        Instantaneous power, shape (T, n_channels).
+    phase : np.ndarray
+        Instantaneous phase in radians, shape (T, n_channels).
+    """
     filtered_data = sos_bandpass_filter(data, fs, freqs, order)
     power, phase = compute_hilbert_power(filtered_data)
     return power, phase
 
 
 def causal_hilbert_fir(numtaps, window="hamming"):
-    """Causal FIR approximation of the Hilbert transform (windowed ideal quadrature filter).
+    """Design a windowed Type III FIR Hilbert filter with constant delay
+    (numtaps - 1) // 2.
 
-    scipy.signal.remez(..., type="hilbert") is numerically unstable for a band this narrow
-    and far from DC/Nyquist (returns NaNs) -- the classic windowed-sinc design is stable and
-    is what this uses instead. Only odd taps get a nonzero coefficient (2 / (pi * n)); this
-    is a Type III linear-phase filter, so its group delay is a single constant,
-    (numtaps - 1) // 2 samples, matching the band-pass filter's own delay below.
+    Parameters
+    ----------
+    numtaps : int
+        Filter length; an even value is bumped to the next odd one.
+    window : str, optional
+        Window name for ``scipy.signal.get_window`` (default is "hamming").
+
+    Returns
+    -------
+    np.ndarray
+        Filter taps, shape (numtaps,) after the odd adjustment.
     """
     if numtaps % 2 == 0:
         numtaps += 1
@@ -76,6 +118,37 @@ def causal_hilbert_fir(numtaps, window="hamming"):
 
 
 def sinefit(y, f0, fs=100, f_search=1.0, f_step=0.1):
+    """Grid-search a sinusoid-plus-trend fit, returning its phase at the
+    window's last sample.
+
+    Parameters
+    ----------
+    y : np.ndarray
+        1D signal window, shape (T,).
+    f0 : float
+        Centre of the frequency search in Hz.
+    fs : float, optional
+        Sampling rate in Hz (default is 100).
+    f_search : float, optional
+        Search half-width in Hz (default is 1.0).
+    f_step : float, optional
+        Grid spacing in Hz (default is 0.1).
+
+    Returns
+    -------
+    phase : float
+        Phase in radians at the last sample.
+    f : float
+        Best-fit frequency in Hz.
+    b : np.ndarray
+        Coefficients [offset, slope, cos, sin] at the best frequency.
+    mu : float
+        Mean removed from ``y`` before fitting.
+    all_f : np.ndarray
+        Frequencies searched in Hz.
+    sse_ : np.ndarray
+        Squared error at each frequency in ``all_f``.
+    """
     mu = y.mean()
     y = y - mu
     t = (np.arange(len(y)) - (len(y) - 1)) / fs
@@ -102,23 +175,24 @@ def sinefit(y, f0, fs=100, f_search=1.0, f_step=0.1):
 
 
 def get_phase_at_perturb(x, onset, peak_freq, window=30):
-    """Compute causal phase of each keypoint at onset
+    """Estimate each keypoint's causal phase at onset with ``sinefit`` (fs
+    fixed at 100 Hz).
 
     Parameters
     ----------
-    x : _type_
-        _description_
-    onset : _type_
-        _description_
-    window : _type_
-        _description_
-    peak_freq : _type_
-        _description_
+    x : np.ndarray
+        Keypoint signals, shape (T, n_keypoints).
+    onset : int
+        Onset sample index; must be at least ``window - 1``.
+    peak_freq : float
+        Stride frequency in Hz.
+    window : int, optional
+        Samples ending at onset, inclusive (default is 30).
 
     Returns
     -------
-    _type_
-        _description_
+    np.ndarray
+        Phase in radians, shape (n_keypoints,).
     """
     phases = []
     for kp_arr in x.T:

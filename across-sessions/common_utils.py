@@ -35,25 +35,24 @@ import tools.dsp as dsp  # noqa: E402
 DATA_DIR = "/mnt/mouse-data-london/proc/"
 STD = 0.03
 
-# Canonical session list -- matches the ALL_SESSIONS default used by the repo's most recent
-# across-session decoding pipelines (notebooks/pipelines/encoding_decoding/kin_dec_pre_post.py,
-# kin_dec_moving_window.py, both last touched 2026-04-07). M063's two sessions and the second
-# M103/M106 sessions are commented out there too -- kept the same here rather than silently
-# diverging. Uncomment to include them.
+# Session list -- must match the "active" rows of the Sessions table in .claude/CLAUDE.md,
+# which is the source of truth. Commented-out entries are "excluded" there; the muscimol sessions
+# (M103_2026_02_20_16_00, M106_2026_02_27_16_00) are deliberately not listed and are only used for
+# muscimol comparisons. Change the table first, then this list.
 ALL_SESSIONS = [
     "M061_2025_03_04_10_00",
     "M061_2025_03_05_14_00",
     "M061_2025_03_06_14_00",
-    "M063_2025_03_13_14_00",
+    # "M063_2025_03_13_14_00",
     # "M063_2025_03_14_15_30",
     "M062_2025_03_20_14_00",
     "M062_2025_03_21_14_00",
     "M078_2025_08_06_15_00",
     "M086_2025_12_10_15_00",
     "M103_2026_02_18_15_30",
-    "M103_2026_02_19_15_30",
+    # "M103_2026_02_19_15_30",  # less trials
     "M106_2026_02_25_15_00",
-    # "M106_2026_02_26_16_00",
+    # "M106_2026_02_26_16_00",  # less trials
 ]
 
 
